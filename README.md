@@ -46,6 +46,8 @@ Once Python is installed and verified, you may proceed to Step 1.
 
 PyNS supports parallel execution. Although not a must, we highly recommend using this feature to speed up simulations. MPI installation procedures depend on the operating system. Platform-specific instructions are provided for macOS, Linux, and Windows below.
 
+**Pick one MPI and stick to it:** To avoid conflicts, install a single MPI stack and ensure its `mpicc`/`mpirun` are first on `PATH` when you install and run PyNS. Easiest path for new users: use the conda-forge `openmpi` + `mpi4py` combo and avoid mixing with any preinstalled MPI.
+
 - **macOS:**
 
    An MPI implementation can be installed using either Homebrew or Anaconda.
@@ -105,6 +107,11 @@ conda install pip
 ```bash
 conda install -c conda-forge mpi4py
 ```
+   - Direct, conflict-free path: install the full conda-forge stack and use it exclusively:
+   ```bash
+   conda install -c conda-forge openmpi mpi4py
+   ```
+   Make sure this conda environment is active whenever you run PyNS.
 
 **Option B: Python venv**
 - Run the following in the terminal:
@@ -116,6 +123,16 @@ source pyns_env/bin/activate  # On Windows: pyns_env\Scripts\activate
 ```bash
 pip install --no-binary=mpi4py mpi4py
 ```
+   - If you already have MPI installed, point mpi4py to the exact compiler before installing:
+   ```bash
+   export MPICC=$(command -v mpicc)
+   pip install --no-binary=mpi4py mpi4py
+   ```
+   - If you want a clean setup with no system conflicts, first install a fresh MPI (e.g., conda-forge `openmpi`) and ensure its `bin` directory is first on `PATH` when running the pip install. Example:
+   ```bash
+   export PATH="$HOME/miniconda3/envs/pyns/bin:$PATH"  # adjust to your conda env path
+   pip install --no-binary=mpi4py mpi4py
+   ```
 
 **Option C: Virtualenv**
 - Open a terminal and run:
@@ -128,6 +145,16 @@ source pyns_env/bin/activate  # On Windows: pyns_env\Scripts\activate
 ```bash
 pip install --no-binary=mpi4py mpi4py
 ```
+   - If you have an MPI already, lock mpi4py to it during install:
+   ```bash
+   export MPICC=$(command -v mpicc)
+   pip install --no-binary=mpi4py mpi4py
+   ```
+   - For the simplest, conflict-free route, install a clean MPI (e.g., conda-forge `openmpi`) and put its `bin` directory first on `PATH` while installing and running PyNS. Example:
+   ```bash
+   export PATH="$HOME/miniconda3/envs/pyns/bin:$PATH"  # adjust to your conda env path
+   pip install --no-binary=mpi4py mpi4py
+   ```
 
 **MPI Verification (all platforms, optional):**
 
