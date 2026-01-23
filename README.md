@@ -103,6 +103,10 @@ conda create -n pyns python=3.12
 conda activate pyns
 conda install pip
 ```
+- Install all core dependencies with conda (recommended before pip installing PyNS):
+```bash
+conda install -c conda-forge numpy scipy h5py mpi4py openmpi matplotlib pyvista pyyaml neuron==8.2.4
+```
 - To support parallel processing (optional), install Python MPI bindings (mpi4py):
 ```bash
 conda install -c conda-forge mpi4py
@@ -193,7 +197,12 @@ After completing Step 0 and optionally Steps 1 and 2, you may proceed with the i
 
 2. Install the PyNS package:
 
-   From the terminal run:
+   - If you are using a conda environment (recommended): install all dependencies with conda first, then install PyNS without pulling deps via pip:
+   ```bash
+   conda install -c conda-forge numpy scipy h5py mpi4py openmpi matplotlib pyvista pyyaml neuron==8.2.4
+   pip install --no-deps -e .
+   ```
+   - If you are not using conda, install normally:
    ```bash
    pip install .
    ```
@@ -314,11 +323,60 @@ After completing Step 0 and optionally Steps 1 and 2, you may proceed with the i
 
    If the file exists, compilation was successful and you can proceed to the **Quick Start Guide With a Test Dataset** section below.
 
+### Step 3 (optional): Verify h5py and HDF5 compatibility
+
+If you plan to use the test dataset (which is in HDF5 format), ensure h5py is linked to a compatible HDF5 library. System package managers or package conflicts can cause h5py to use incompatible HDF5 versions.
+
+**Check h5py's HDF5 library:**
+```bash
+python -c "import h5py; print(h5py.__version__); print(h5py.version.hdf5_version)"
+```
+
+**If you see an error like "file signature not found" when loading HDF5 files:**
+
+This indicates h5py is using an incompatible HDF5 library version. The solution depends on your environment:
+
+**For conda environments (all platforms):**
+```bash
+conda install -c conda-forge --force-reinstall h5py
+```
+
+**For venv/virtualenv (all platforms):**
+```bash
+pip install --upgrade --force-reinstall h5py
+```
+
+**Platform-specific notes:**
+
+- **macOS:** If you have Homebrew HDF5 installed, uninstall it to avoid conflicts:
+  ```bash
+  brew uninstall hdf5
+  ```
+  Then reinstall h5py using conda-forge or pip as shown above.
+
+- **Linux (Debian/Ubuntu):** If system libhdf5 causes conflicts, remove it:
+  ```bash
+  sudo apt-get remove libhdf5-dev
+  ```
+  Then use conda-forge or pip h5py.
+
+- **Linux (other distros):** Similarly, uninstall system HDF5 dev packages and rely on conda-forge or pip h5py binaries.
+
+**Verify after reinstall:**
+After reinstalling h5py, test that it can read HDF5 files:
+```bash
+python -c "import h5py; f = h5py.File('./src/pyns/test_dataset/lumbar-tSCS_cathode_T11-T12_anode_navel-sides_units_V_m_cropped.h5', 'r'); print('Success:', list(f.keys())); f.close()"
+```
+
+If this runs without errors, h5py is working correctly.
+
+
 ## Quick Start Guide With a Test Dataset
 
 -	We provide a test dataset that can be used to reproduce selected published simulation results [DOI]. The dataset can be found under `./src/pyns/test_dataset` and contains the following:
 	-	`lumbar-tSCS_cathode_T11-T12_anode_navel-sides_units_V_m_cropped.h5`: A cropped potential field of the pre-simulated volume conductor finite-element model representing the lumbar transcutaneous spinal cord stimulation (tSCS) paradigm shown in **Extended Data Fig. 5b**[DOI].
 	-	`RightSoleusAxons_diams_from_Schalow1992_cropped.npy`: Axon trajectories for axons projecting to the right soleus muscle in the whole-body model, cropped peripherally at a craniocaudal level that fits within the boundaries of the cropped potential field.
+
 -	Run simulations with the test dataset:
 	- The test dataset is used by default in the simulation scripts when no arguments are provided for `field_path` and `axons_path` so you do not need to set those. To be able to run a quick test, you can limit the axons to be simulated to those only containing S1_DR and S1_VR for dorsal right S1 segment axons and ventral right S1 segment axons respectuvely. It is also recommended to always have passive end-nodes to avoid uninterpretable end-node activations. For this test run, all other configuration parameters should be fine with their default values. Please use the commands below in your terminal to run a titration example on the test dataset with the arguments described: (Please change -n parameters based on the number of processors available in your computer or remove `mpirun -n N` completely if parallel processing is not preferred)
 
@@ -331,6 +389,8 @@ After completing Step 0 and optionally Steps 1 and 2, you may proceed with the i
 	mpirun -n 10 pyns-run-discrete-simulations --axons_kws_any S1_DR S1_VR --passive_end_nodes --enable_synaptic_transmission
 	```
 	By not providing a `results_dir` argument, results will be saved under `./results`
+	
+	**Note:** If you encounter an h5py error (e.g., "file signature not found"), please refer to the **Verify h5py and HDF5 compatibility** section above for troubleshooting steps.
 - Upon completion of the simulations, you can run the following postprocessing commands to generate plots of the results:
 
 	- Titrations:
@@ -593,7 +653,8 @@ pyns/
 For development, please install in editable mode with dev dependencies:
 
 ```bash
-pip install -e ".[dev]"
+conda install -c conda-forge numpy scipy h5py mpi4py openmpi matplotlib pyvista pyyaml neuron==8.2.4 pytest black flake8
+pip install --no-deps -e ".[dev]"
 ```
 
 This will install additional development tools like pytest, black, and flake8.
