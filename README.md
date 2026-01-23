@@ -103,19 +103,6 @@ conda create -n pyns python=3.12
 conda activate pyns
 conda install pip
 ```
-- Install all core dependencies with conda (recommended before pip installing PyNS):
-```bash
-conda install -c conda-forge numpy scipy h5py mpi4py openmpi matplotlib pyvista pyyaml neuron==8.2.4
-```
-- To support parallel processing (optional), install Python MPI bindings (mpi4py):
-```bash
-conda install -c conda-forge mpi4py
-```
-   - Direct, conflict-free path: install the full conda-forge stack and use it exclusively:
-   ```bash
-   conda install -c conda-forge openmpi mpi4py
-   ```
-   Make sure this conda environment is active whenever you run PyNS.
 
 **Option B: Python venv**
 - Run the following in the terminal:
@@ -198,8 +185,17 @@ After completing Step 0 and optionally Steps 1 and 2, you may proceed with the i
 2. Install the PyNS package:
 
    - If you are using a conda environment (recommended): install all dependencies with conda first, then install PyNS without pulling deps via pip:
+   
+   **With MPI support (recommended for parallel processing):**
    ```bash
-   conda install -c conda-forge numpy scipy h5py mpi4py openmpi matplotlib pyvista pyyaml neuron==8.2.4
+   conda install -c conda-forge numpy scipy h5py mpi4py openmpi matplotlib pyvista pyyaml
+   pip install neuron==8.2.4
+   pip install --no-deps -e .
+   ```
+   **Without MPI support:**
+   ```bash
+   conda install -c conda-forge numpy scipy h5py matplotlib pyvista pyyaml
+   pip install neuron==8.2.4
    pip install --no-deps -e .
    ```
    - If you are not using conda, install normally:
@@ -323,7 +319,7 @@ After completing Step 0 and optionally Steps 1 and 2, you may proceed with the i
 
    If the file exists, compilation was successful and you can proceed to the **Quick Start Guide With a Test Dataset** section below.
 
-### Step 3 (optional): Verify h5py and HDF5 compatibility
+### Step 4 (optional): Verify h5py and HDF5 compatibility
 
 If you plan to use the test dataset (which is in HDF5 format), ensure h5py is linked to a compatible HDF5 library. System package managers or package conflicts can cause h5py to use incompatible HDF5 versions.
 
@@ -652,8 +648,17 @@ pyns/
 
 For development, please install in editable mode with dev dependencies:
 
+**With MPI support (recommended for parallel processing):**
 ```bash
-conda install -c conda-forge numpy scipy h5py mpi4py openmpi matplotlib pyvista pyyaml neuron==8.2.4 pytest black flake8
+conda install -c conda-forge numpy scipy h5py mpi4py openmpi matplotlib pyvista pyyaml pytest black flake8
+pip install neuron==8.2.4
+pip install --no-deps -e ".[dev]"
+```
+
+**Without MPI support:**
+```bash
+conda install -c conda-forge numpy scipy h5py matplotlib pyvista pyyaml pytest black flake8
+pip install neuron==8.2.4
 pip install --no-deps -e ".[dev]"
 ```
 
