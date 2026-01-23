@@ -9,215 +9,227 @@ Below, we provide brief instructions to install the PyNS framework, run example 
 
 ## Installation
 
-The installation of the PyNS framework is described below as a step-by-step process. Before installation, Python must be available (Step 0). An MPI installation (Step 1) is highly recommended to levarage parallel processing support in the simualtion scripts. Once these prerequisites are satisfied, the PyNS framework can be installed (Steps 2 and 3). Common installation issues and troubleshooting guidance are also provided for different steps.
+PyNS is installable as a standard Python package in accordance with PEP 518. The installation process starts with setting up your platform-specific environment (Python, optional MPI, and optional virtual environment), followed by installing the PyNS framework itself.
 
-### Step 0: Dependencies
+**Pick one MPI and stick to it:** To avoid conflicts, install a single MPI stack and ensure its `mpicc`/`mpirun` are first on `PATH`. For new users, the conda-forge `openmpi` + `mpi4py` combo is recommended.
 
-PyNS is installable as a standard Python package in accordance with PEP 518. Prior to installation, Python must be available on the system:
+### Step 1: Platform-Specific Environment Setup
 
-- Install Python == 3.12:
+Choose your platform below and follow the instructions to set up Python, an optional virtual environment, and optional MPI support for parallel processing.
 
-   **Option A: Anaconda/Miniconda (recommended)**
-   - Install Anaconda from the [official site](https://www.anaconda.com/download) (or Miniconda from [here](https://docs.conda.io/en/latest/miniconda.html))
-   - Open a terminal and install python3.12 by running:
+#### macOS
+
+**Option A: Using Conda (Recommended)**
+
+1. Install [Anaconda](https://www.anaconda.com/download) or [Miniconda](https://docs.conda.io/en/latest/miniconda.html)
+
+2. Create and activate a conda environment with Python 3.12:
    ```bash
-   conda install -c conda-forge python=3.12
-   ```
-   Or create a virtual environment with Python=3.12 by running:
-   ```bash
-   conda create -n pyns python=3.12
+   conda create -n pyns python=3.12 -c conda-forge
    conda activate pyns
    ```
 
-   **Option B: System Python**
-   - Follow the [official Python instructions](https://docs.python.org/3/using/index.html) for your OS to install Python 3.12.
-
-   **Verify installation:**
-   - Open a terminal and run:
+3. (Optional) Install MPI for parallel processing:
    ```bash
-   python3.12 --version
-   python -c "import sys; print(sys.version)"
+   conda install -c conda-forge openmpi mpi4py
    ```
-   You should see a version string that starts with 3.12 (for example, 3.12.x).
 
-Once Python is installed and verified, you may proceed to Step 1.
+4. (Optional) Expose library files:
+   - For Intel macOS:
+     ```bash
+     export DYLD_LIBRARY_PATH=/usr/local/lib:$DYLD_LIBRARY_PATH
+     ```
+   - For Apple Silicon:
+     ```bash
+     export DYLD_LIBRARY_PATH=/opt/homebrew/lib:$DYLD_LIBRARY_PATH
+     ```
 
-### Step 1 (optional): MPI installation and verification
+**Option B: Using System Python with venv**
 
-PyNS supports parallel execution. Although not a must, we highly recommend using this feature to speed up simulations. MPI installation procedures depend on the operating system. Platform-specific instructions are provided for macOS, Linux, and Windows below.
+1. Install Python 3.12 following the [official Python instructions](https://docs.python.org/3/using/index.html)
 
-**Pick one MPI and stick to it:** To avoid conflicts, install a single MPI stack and ensure its `mpicc`/`mpirun` are first on `PATH` when you install and run PyNS. Easiest path for new users: use the conda-forge `openmpi` + `mpi4py` combo and avoid mixing with any preinstalled MPI.
+2. Create and activate a virtual environment:
+   ```bash
+   python3.12 -m venv pyns_env
+   source pyns_env/bin/activate
+   ```
 
-- **macOS:**
+3. (Optional) Install MPI using Homebrew:
+   ```bash
+   brew install open-mpi
+   ```
+   - For Intel macOS:
+     ```bash
+     export DYLD_LIBRARY_PATH=/usr/local/lib:$DYLD_LIBRARY_PATH
+     ```
+   - For Apple Silicon:
+     ```bash
+     export DYLD_LIBRARY_PATH=/opt/homebrew/lib:$DYLD_LIBRARY_PATH
+     ```
 
-   An MPI implementation can be installed using either Homebrew or Anaconda.
-	
-	- Install MPI:
+4. (Optional) Install mpi4py if you installed MPI:
+   ```bash
+   export MPICC=$(command -v mpicc)
+   pip install --no-binary=mpi4py mpi4py
+   ```
 
-      **Option A: Homebrew**
-		- Run the following in the terminal:
-		```bash
-		brew install open-mpi
-		```
+#### Linux
 
-      **Option B: Anaconda/Miniconda**
-		- Run the following in the terminal:
-		```bash
-		conda install -c conda-forge openmpi
-		```
-	- Expose library files:
+**Preparation: Install C++ compiler tools (required for NEURON mechanism compilation)**
 
-		- For Intel macOS: Inside the terminal, run the following:
-		`export DYLD_LIBRARY_PATH=/usr/local/lib:$DYLD_LIBRARY_PATH`
-		- For Apple Silicon:  Inside the terminal, run the following:
-		`export DYLD_LIBRARY_PATH=/opt/homebrew/lib:$DYLD_LIBRARY_PATH`
+```bash
+sudo apt-get update
+sudo apt-get install make g++
+```
 
-- **Linux:**
+**Option A: Using Conda (Recommended)**
 
-   **Option A: apt-get (Debian/Ubuntu)**
-   - Run the following in the terminal:
+1. Install [Anaconda](https://www.anaconda.com/download) or [Miniconda](https://docs.conda.io/en/latest/miniconda.html)
+
+2. Create and activate a conda environment with Python 3.12:
+   ```bash
+   conda create -n pyns python=3.12 -c conda-forge
+   conda activate pyns
+   ```
+
+3. (Optional) Install MPI for parallel processing:
+   ```bash
+   conda install -c conda-forge openmpi mpi4py
+   ```
+
+**Option B: Using System Python with venv**
+
+1. Install Python 3.12 following the [official Python instructions](https://docs.python.org/3/using/index.html)
+
+2. Create and activate a virtual environment:
+   ```bash
+   python3.12 -m venv pyns_env
+   source pyns_env/bin/activate
+   ```
+
+3. (Optional) Install MPI using apt (Debian/Ubuntu):
    ```bash
    sudo apt-get install -y libopenmpi-dev openmpi-bin
    ```
 
-   **Option B: Anaconda/Miniconda**
-   - Run the following in the terminal:
-   ```bash
-   conda install -c conda-forge openmpi
-   ```
-
-- **Windows:**
-   - Please use [WSL](https://learn.microsoft.com/en-us/windows/wsl/install) and follow the same instructions listed for Linux above.
-
-### Step 2 (optional): Virtual environment for managing python packages
-
-It is recommended to create a virtual environment for easier management of the installed Python packages. There are 3 different options to choose from for setting up a virtual environment.
-
-**Option A: Conda virtual environment (recommended)**
-- Please first install [Anaconda](https://www.anaconda.com/download) or [Miniconda](https://docs.conda.io/en/latest/miniconda.html) to use this option.
-- After Anaconda or Miniconda is installed, open a terminal and run:
-
-	**Note: Please skip the first two commands if a conda environment was already installed and activated in Step0 (Option A).**
-```bash
-conda create -n pyns python=3.12
-conda activate pyns
-conda install pip
-```
-
-**Option B: Python venv**
-- Run the following in the terminal:
-```bash
-python3.12 -m venv pyns_env
-source pyns_env/bin/activate  # On Windows: pyns_env\Scripts\activate
-```
-- To support parallel processing (optional), install Python MPI bindings (mpi4py):
-```bash
-pip install --no-binary=mpi4py mpi4py
-```
-   - If you already have MPI installed, point mpi4py to the exact compiler before installing:
+4. (Optional) Install mpi4py if you installed MPI:
    ```bash
    export MPICC=$(command -v mpicc)
    pip install --no-binary=mpi4py mpi4py
    ```
-   - If you want a clean setup with no system conflicts, first install a fresh MPI (e.g., conda-forge `openmpi`) and ensure its `bin` directory is first on `PATH` when running the pip install. Example:
-   ```bash
-   export PATH="$HOME/miniconda3/envs/pyns/bin:$PATH"  # adjust to your conda env path
-   pip install --no-binary=mpi4py mpi4py
-   ```
 
-**Option C: Virtualenv**
-- Open a terminal and run:
-```bash
-pip install virtualenv
-virtualenv -p python3.12 pyns_env
-source pyns_env/bin/activate  # On Windows: pyns_env\Scripts\activate
-```
-- To support parallel processing (optional), install Python MPI bindings (mpi4py):
-```bash
-pip install --no-binary=mpi4py mpi4py
-```
-   - If you have an MPI already, lock mpi4py to it during install:
-   ```bash
-   export MPICC=$(command -v mpicc)
-   pip install --no-binary=mpi4py mpi4py
-   ```
-   - For the simplest, conflict-free route, install a clean MPI (e.g., conda-forge `openmpi`) and put its `bin` directory first on `PATH` while installing and running PyNS. Example:
-   ```bash
-   export PATH="$HOME/miniconda3/envs/pyns/bin:$PATH"  # adjust to your conda env path
-   pip install --no-binary=mpi4py mpi4py
-   ```
+#### Windows
+
+**Use WSL (Windows Subsystem for Linux)**
+
+1. Install [WSL](https://learn.microsoft.com/en-us/windows/wsl/install)
+
+2. Follow the **Linux** instructions above within your WSL environment
 
 **MPI Verification (all platforms, optional):**
 
-To verify that MPI and mpi4py are correctly installed, open a terminal and run:
+To verify that MPI and mpi4py are correctly installed, run:
 ```bash
 mpirun --version
 python -c "from mpi4py import MPI; print(MPI.Get_version())"
 ```
 
 Expected output:
-- The first command should display the MPI build and version information (e.g., "Version:xx, Release Date:yy" or similar).
-- The second command should print a tuple showing the MPI version (e.g., `(3, 1)` or `(4, 0)`).
+- The first command should display MPI build and version information (e.g., "Version:xx, Release Date:yy")
+- The second command should print a tuple showing the MPI version (e.g., `(3, 1)` or `(4, 0)`)
 
-If both commands complete successfully without errors, your MPI installation is working correctly and you can proceed to Step 3.
+### Step 2: Clone or Download the PyNS Repository
 
-### Step 3: Installing the PyNS framework
+**Option A: Using git clone (recommended)**
 
-After completing Step 0 and optionally Steps 1 and 2, you may proceed with the installation of the PyNS framework. The installation steps below should be followed in the order presented. Please note that several steps offer alternative options, allowing you to choose the configuration that best fits your system and workflow.
+```bash
+git clone https://github.com/rowaldlab/PyNS
+cd PyNS
+```
 
-1. Clone or download the repository:
+**Important:** The test dataset files are stored using Git LFS (Large File Storage). Fetch them:
+```bash
+# Install Git LFS if not already installed:
+# macOS: brew install git-lfs
+# Linux: sudo apt-get install git-lfs (or your package manager)
+# Windows: download from https://git-lfs.github.com/
 
-   **Option A: Using git clone (recommended)**
-   - Open a terminal and run:
-   ```bash
-   git clone https://github.com/rowaldlab/PyNS
-   cd pyns
-   ```
+git lfs install
+git lfs pull
+```
 
-   **Option B: Download as ZIP**
-   - From the [github webpage of the repository repository](https://github.com/rowaldlab/PyNS) and click "Code" → "Download ZIP"
-   - Extract the downloaded file to your desired location
-   - Open a terminal and navigate to the extracted folder:
-   ```bash
-   cd /path/to/pyns
-   ```
+Verify the files are correct (should be ~MB, not KB):
+```bash
+ls -lh src/pyns/test_dataset/
+```
 
-2. Install the PyNS package:
+**Option B: Download as ZIP**
 
-   - If you are using a conda environment (recommended): install all dependencies with conda first, then install PyNS without pulling deps via pip:
-   
-   **With MPI support (recommended for parallel processing):**
-   ```bash
-   conda install -c conda-forge numpy scipy h5py mpi4py openmpi matplotlib pyvista pyyaml
-   pip install neuron==8.2.4
-   pip install --no-deps -e .
-   ```
-   **Without MPI support:**
-   ```bash
-   conda install -c conda-forge numpy scipy h5py matplotlib pyvista pyyaml
-   pip install neuron==8.2.4
-   pip install --no-deps -e .
-   ```
-   - If you are not using conda, install normally:
-   ```bash
-   pip install .
-   ```
+- Download from the [GitHub repository](https://github.com/rowaldlab/PyNS) by clicking "Code" → "Download ZIP"
+- Extract the downloaded file to your desired location
+- Navigate to the extracted folder:
+```bash
+cd /path/to/PyNS
+```
 
-3. Compile NEURON mod files:
-   ```bash
-   cd src/pyns
-   nrnivmodl ./mod_files/**/*.mod
-   ```
+**Important:** ZIP downloads from GitHub do NOT include Git LFS files. The test dataset files will appear as small pointer files. To get the actual files:
 
-	**Common problems with `nrnivmodl` command**
-	-	If you are in a conda environment and you encounter an error saying `nrnivmodl: command not found`:
-		
-		The path of the installed binaries is usually `$HOME/anaconda3/envs/pyns/bin`. Try using the full path:
-		```bash
-		$HOME/anaconda3/envs/pyns/bin/nrnivmodl ./mod_files/**/*.mod
-		```
+- **Option B.1:** Download test dataset files manually from [GitHub](https://github.com/rowaldlab/PyNS/tree/main/src/pyns/test_dataset) and place them in `src/pyns/test_dataset/`
 
-	-	If you are on macOS and encounter an error saying `fatal error: 'iostream' file not found`:
+- **Option B.2:** Convert to a git repository and use Git LFS:
+  ```bash
+  cd /path/to/PyNS
+  git init
+  git remote add origin https://github.com/rowaldlab/PyNS
+  git fetch
+  git checkout main
+  git lfs install
+  git lfs pull
+  ```
+
+### Step 3: Install PyNS Package Dependencies
+
+**If using Conda (Step 1 Option A) (recommended):**
+
+Install all dependencies with conda first, then install PyNS without pulling deps via pip:
+
+**With MPI support (if you installed MPI in Step 1):**
+```bash
+conda install -c conda-forge numpy scipy h5py mpi4py openmpi matplotlib pyvista pyyaml
+pip install neuron==8.2.4
+pip install --no-deps -e .
+```
+
+**Without MPI support:**
+```bash
+conda install -c conda-forge numpy scipy h5py matplotlib pyvista pyyaml
+pip install neuron==8.2.4
+pip install --no-deps -e .
+```
+
+**If using venv/virtualenv: (Step 1 Option B)**
+
+```bash
+pip install .
+```
+
+### Step 4: Compile NEURON mod files
+
+```bash
+cd src/pyns
+nrnivmodl ./mod_files/**/*.mod
+```
+
+**Common problems with `nrnivmodl` command**
+
+- If you are in a conda environment and you encounter an error saying `nrnivmodl: command not found`:
+  
+  The path of the installed binaries is usually `$HOME/anaconda3/envs/pyns/bin`. Try using the full path:
+  ```bash
+  $HOME/anaconda3/envs/pyns/bin/nrnivmodl ./mod_files/**/*.mod
+  ```
+
+- If you are on macOS and encounter an error saying `fatal error: 'iostream' file not found`:
 		
 		This error occurs when the C++ compiler cannot locate the standard library headers. The issue can happen with any Python environment (system Python, venv, virtualenv, or conda). Please try the following solutions in order:
 		
@@ -293,33 +305,33 @@ After completing Step 0 and optionally Steps 1 and 2, you may proceed with the i
 		nrnivmodl ./mod_files/**/*.mod
 		```
 
-4. Verify successful compilation of nrnivmodl:
+### Step 5: Verify Successful Compilation
 
-   After `nrnivmodl` completes, check for the compiled library. The location depends on your platform:
+After `nrnivmodl` completes, check for the compiled library. The location depends on your platform:
 
-   **macOS (Intel):**
-   ```bash
-   ls -la x86_64/libnrnmech.dylib
-   ```
+**macOS (Intel):**
+```bash
+ls -la x86_64/libnrnmech.dylib
+```
 
-   **macOS (Apple Silicon):**
-   ```bash
-   ls -la arm64/libnrnmech.dylib
-   ```
+**macOS (Apple Silicon):**
+```bash
+ls -la arm64/libnrnmech.dylib
+```
 
-   **Linux:**
-   ```bash
-   ls -la x86_64/libnrnmech.so
-   ```
+**Linux:**
+```bash
+ls -la x86_64/libnrnmech.so
+```
 
-   **Windows (WSL):**
-   ```bash
-   ls -la x86_64/libnrnmech.so
-   ```
+**Windows (WSL):**
+```bash
+ls -la x86_64/libnrnmech.so
+```
 
-   If the file exists, compilation was successful and you can proceed to the **Quick Start Guide With a Test Dataset** section below.
+If the file exists, compilation was successful and you can proceed to the [Quick Start Guide](#quick-start-guide-with-a-test-dataset).
 
-### Step 4 (optional): Verify h5py and HDF5 compatibility
+### Step 6 (Optional): Verify h5py and HDF5 Compatibility
 
 If you plan to use the test dataset (which is in HDF5 format), ensure h5py is linked to a compatible HDF5 library. System package managers or package conflicts can cause h5py to use incompatible HDF5 versions.
 
