@@ -18,23 +18,23 @@ maintainers = [
 keywords = ["neuroscience", "neuron", "simulation", "peripheral-nerve", "spinal-cord", "neuromodulation", "neurostimulation", "extracellular-stimulation"]
 
 dependencies = [
-    "numpy",
-    "matplotlib",
-    "scipy",
-    "h5py",
-    "pyvista",
+    "numpy==2.1.2",
+    "matplotlib==3.9.2",
+    "scipy==1.13.1",
+    "h5py==3.8.0",
+    "pyvista==0.44.1",
     "neuron==8.2.4",
-    "pyyaml",
+    "pyyaml==6.0.2",
 ]
 
 [project.optional-dependencies]
 dev = [
-    "pytest",
-    "black",
-    "flake8",
+    "pytest>=7.0",
+    "black>=23.0",
+    "flake8>=5.0",
 ]
 mpi = [
-    "mpi4py",  # Note: Install with 'pip install --no-binary=mpi4py mpi4py' before installing pyns
+    "mpi4py==3.1.4",  # Note: Install with 'pip install --no-binary=mpi4py mpi4py' before installing pyns
 ]
 
 [project.urls]
