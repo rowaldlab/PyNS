@@ -7,7 +7,7 @@ name = "pyns"
 version = "0.1.0"
 description = "Python Neuron Simulations - A framework for peripheral nerve simulations"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 license = {text = "MIT"}
 authors = [
     {name = "Abdallah Alashqar", email = "abdallah.j.alashqar@fau.de"}
@@ -18,10 +18,10 @@ maintainers = [
 keywords = ["neuroscience", "neuron", "simulation", "peripheral-nerve", "spinal-cord", "neuromodulation", "neurostimulation", "extracellular-stimulation"]
 
 dependencies = [
-    "numpy==2.1.2",
-    "matplotlib==3.9.2",
-    "scipy==1.13.1",
-    "h5py==3.8.0",
+    "numpy>=2.1.2",
+    "matplotlib>=3.10.0",
+    "scipy>=1.15.0",
+    "h5py>=3.14.0",
     "pyvista==0.44.1",
     "neuron==8.2.4",
     "pyyaml==6.0.2",
