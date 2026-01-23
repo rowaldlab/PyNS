@@ -1,0 +1,10 @@
+include README.md
+include LICENSE
+include requirements.txt
+include src/pyns/init_diff_v.hoc
+recursive-include src/pyns/mod_files *
+recursive-include src/pyns/configs *.yaml
+recursive-include src/pyns/test_dataset *.npy *.txt
+global-exclude *.pyc
+global-exclude __pycache__
+global-exclude *.so

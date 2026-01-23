@@ -1,0 +1,61 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pyns"
+version = "0.1.0"
+description = "Python Neuron Simulations - A framework for peripheral nerve simulations"
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "MIT"}
+authors = [
+    {name = "Abdallah Alashqar", email = "abdallah.j.alashqar@fau.de"}
+]
+maintainers = [
+    {name = "Andreas Rowald", email = "andreas.rowald@fau.de"}
+]
+keywords = ["neuroscience", "neuron", "simulation", "peripheral-nerve", "spinal-cord", "neuromodulation", "neurostimulation", "extracellular-stimulation"]
+
+dependencies = [
+    "numpy",
+    "matplotlib",
+    "scipy",
+    "h5py",
+    "pyvista",
+    "neuron==8.2.4",
+    "pyyaml",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "black",
+    "flake8",
+]
+mpi = [
+    "mpi4py",  # Note: Install with 'pip install --no-binary=mpi4py mpi4py' before installing pyns
+]
+
+[project.urls]
+Homepage = "https://www.pdh.med.fau.de/"
+
+[project.scripts]
+pyns-run-discrete-simulations = "pyns.cli:run_discrete_simulations"
+pyns-run-titrations = "pyns.cli:run_titrations"
+pyns-postprocess-titrations = "pyns.postprocessing_scripts.titrations:main"
+pyns-postprocess-discrete-simulations = "pyns.postprocessing_scripts.discrete_simulations:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+pyns = [
+    "init_diff_v.hoc",
+    "mod_files/**/*",
+    "configs/*.yaml",
+    "test_dataset/*",
+]

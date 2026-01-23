@@ -1,0 +1,12 @@
+**/x86_64*
+**/mods/x86_64*
+**/gaines_etal_2018_mods/x86_64*
+**results**
+*.m
+**_pycache__**
+**cache**
+tutorials/data/*
+tutorials/results/*
+**/logs/*
+postprocess_and_visualize/*
+**.egg-info**

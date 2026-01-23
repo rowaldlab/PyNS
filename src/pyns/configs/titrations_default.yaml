@@ -1,0 +1,80 @@
+# PyNS Titrations Configuration Template
+# Default parameters for parse_titrations_arguments()
+# For more details on each parameter, please refer to the help of run_titrations.py
+# To use a config file:
+# 1. create a copy of this file and only add the parameters you want to change.
+# 2. pass the path to the new config file using the --config_path argument when running run_titrations.py 
+
+# File paths - NOTE: Defaults use package-relative paths
+# Override these if needed by providing command-line arguments or custom config files
+# Example override for results directory:
+#   results_dir: "/path/to/custom/results"
+field_path: null
+axons_path: null
+results_dir: null
+results_dir_suffix: ""
+
+# Recording options
+record_v: false
+recorded_v_nodes: null
+recorded_ap_times_nodes: null
+
+# Debug and simulation flags
+debug: false
+exclude_end_node: false
+passive_end_nodes: false
+prepassive_nodes_as_endnodes: false
+# Whether to disable motoneuron creation for motor efferents
+no_motoneuron: false
+
+# Stimulation parameters
+initial_stim_factor: 30.0
+max_stim_factor: 300.0
+min_stim_factor: 0.01
+
+# Titration parameters
+titration_conv_perc: 1.0
+initial_reduction_factor: 0.5
+initial_increment_factor: 1.5
+number_of_req_spikes: 1
+
+# Simulation timing
+sim_dur: 5.0
+time_step: 0.005
+
+# Pulse parameters
+pulse_path: null
+pulse_silence_period: 1.0
+pulse_shape: "monophasic"  # Options: "monophasic", "biphasic"
+pulse_amplitude: 1.0
+pulse_width: 0.2
+
+# Continuous stimulation parameters
+cont_stim_waveform: false
+cont_stim_freq: 40.0
+cont_stim_carrier_freq: 10000.0
+
+# Model parameters
+model_variant: "Alashqar"  # Options: "Alashqar", "Gaines", "MRG"
+paramfit_method: "continuous"
+min_fiber_length: 40
+
+# Axon filtering keywords (any match)
+axons_kws_any: null
+afferent_kws_any:
+- sensory
+- _Aalpha
+- _DR
+- _DL
+- dorsal
+- afferent
+efferent_kws_any:
+- motor
+- _alpha
+- _VR
+- _VL
+- ventral
+- efferent
+
+# Plotting
+axons_to_plot: null

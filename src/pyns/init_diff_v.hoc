@@ -1,0 +1,28 @@
+strdef sname
+objref strobj
+strobj = new StringFunctions()
+
+proc init() {
+    forall {
+        sname = secname()
+        is_soma = strobj.substr(sname, "soma")
+        is_initsegment = strobj.substr(sname, "initsegment")
+        // print sname
+        if ((is_soma != -1) || (is_initsegment != -1)) {
+            // print "soma or initsegment"
+            v = -70
+        } else {
+            v = v_init
+        }
+    }
+    finitialize()
+    fcurrent()
+  /*
+  if (cvode.active()) {
+    cvode.re_init()
+  } else {
+    fcurrent()
+  }
+  frecord_init()
+  */
+}

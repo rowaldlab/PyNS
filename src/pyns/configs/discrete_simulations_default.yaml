@@ -1,0 +1,93 @@
+# PyNS Discrete Simulations Configuration Template
+# Default parameters for parse_discrete_simulations_arguments()
+# For more details on each parameter, please refer to the help of run_discrete_simulations.py
+# To use a config file:
+# 1. create a copy of this file and only add the parameters you want to change.
+# 2. pass the path to the new config file using the --config_path argument when running run_discrete_simulations.py
+
+# File paths - NOTE: Defaults use package-relative paths
+# Override these if needed by providing command-line arguments or custom config files
+# Example override for results directory:
+#   results_dir: "/path/to/custom/results"
+field_path: null
+axons_path: null
+results_dir: null
+results_dir_suffix: ""
+
+# Recording options
+record_v: false
+recorded_v_nodes: null
+recorded_ap_times_nodes: null
+
+# Debug and simulation flags
+debug: false
+afferents_only: false
+efferents_only: false
+other_axons_only: false
+skip_other_axons: false
+passive_end_nodes: false
+prepassive_nodes_as_endnodes: false
+disable_extracellular_efferent: false
+save_only_processed_responses: false
+# Whether to disable motoneuron creation for motor efferents
+no_motoneuron: false
+
+# Stimulation parameters
+stim_amplitudes: null
+initial_stim_factor: 45.0
+stim_factor_step: 5.0
+max_stim_factor: 100.0
+
+# Simulation timing
+sim_dur: 5.0
+sim_dur_afferent: 5.0
+sim_dur_efferent: 10.0
+sim_dur_other: 5.0
+time_step: 0.005
+
+# Waveform parameters
+pulse_path: null
+pulse_silence_period: 1.0
+pulse_shape: "monophasic"  # Options: "monophasic", "biphasic"
+pulse_amplitude: 1.0
+pulse_width: 0.2
+# Continuous stimulation parameters
+cont_stim_waveform: false
+cont_stim_freq: 40.0
+cont_stim_carrier_freq: 10000.0
+
+# Model parameters
+model_variant: "Alashqar"  # Options: "Alashqar", "Gaines", "MRG"
+paramfit_method: "continuous"
+min_fiber_length: 40
+
+# Axon filtering keywords (any match)
+axons_kws_any: null
+root_kws_any:
+- rlet
+- anstm
+afferent_kws_any:
+- sensory
+- _Aalpha
+- _DR
+- _DL
+- dorsal
+- afferent
+efferent_kws_any:
+- motor
+- _alpha
+- _VR
+- _VL
+- ventral
+- efferent
+
+# Synaptic transmission parameters
+afferents_results_path: null
+syn_afferent_kws_all: null  # Keywords that all must match for synaptic afferents
+syn_efferent_kws_all: null  # Keywords that all must match for synaptic efferents
+enable_synaptic_transmission: false
+syn_weight: 0.0056994
+proj_freq: 50.0
+
+# Plotting
+axons_to_plot: null
