@@ -468,28 +468,45 @@ pyns/
 ├── pyproject.toml          # PEP 518 build configuration
 ├── MANIFEST.in             # Include non-Python files
 ├── README.md
-├── requirements.txt
+├── LICENSE
 └── src/
     └── pyns/
         ├── __init__.py
-        ├── cli.py          # Entry points for executables
-        ├── run_discrete_simulations.py
-        ├── run_titrations.py
-        ├── axon_models.py
-        ├── sim_utils.py
-        ├── utils.py
-        ├── ... (other core modules)
+        ├── cli.py                          # Entry points for executables
+        ├── axon_models.py                  # Axon model definitions
+        ├── arguments_parsers.py            # Command-line argument parsing
+        ├── config.py                       # Configuration management
+        ├── morphological_params.py         # Morphological parameters
+        ├── run_discrete_simulations.py     # Discrete simulation runner
+        ├── run_titrations.py               # Titration simulation runner
+        ├── sim_utils.py                    # Simulation utilities
+        ├── sim_analysis_utils.py           # Simulation analysis utilities
+        ├── postprocessing_utils.py         # Postprocessing utilities
+        ├── titration_utils.py              # Titration-specific utilities
+        ├── utils.py                        # General utilities
+        ├── init_diff_v.hoc                 # NEURON initialization script
         ├── compute_properties/
         │   ├── __init__.py
-        │   ├── compute_recovery_cycle.py
-        │   └── compute_strength_duration.py
+        │   ├── compute_recovery_cycle.py   # Recovery cycle computation
+        │   ├── compute_strength_duration.py # Strength-duration computation
+        │   └── rec_cycle_results/          # Recovery cycle results
         ├── configs/
         │   ├── discrete_simulations_default.yaml
         │   └── titrations_default.yaml
-      ├── test_dataset/
-      │   └── ... (example input files)
-        └── mod_files/
-            └── ... (NEURON mechanism files)
+        ├── postprocessing_scripts/
+        │   ├── __init__.py
+        │   ├── discrete_simulations.py     # Discrete simulation postprocessing
+        │   └── titrations.py               # Titration postprocessing
+        ├── test_dataset/
+        │   ├── lumbar-tSCS_cathode_T11-T12_anode_navel-sides_units_V_m_cropped.h5
+        │   └── RightSoleusAxons_diams_from_Schalow1992_cropped.npy
+        └── mod_files/                      # NEURON mechanism files
+            ├── Alashqar_etal_2026/
+            ├── Formento_etal_2018/
+            ├── Gaines_etal_2018_243841/
+            ├── McIntyre_etal_2002_3810/
+            ├── Pelot_etal_2021_266498/
+            └── NEURON_additional/
 ```
 
 ## Development
