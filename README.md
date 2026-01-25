@@ -3,8 +3,16 @@
 The Python Neurostimulation Simulator (PyNS) is a Python-based computational framework for simulating interactions between neurostimulation paradigms and neural structures.
 
 
-This repository accompanies the bioRxiv preprint: [insert citation] and provides several tools to facilitate virtual prototyping of neurostimulation paradigms. These include the simulation of axonal responses to externally applied electric fields, homonymous monosynaptic transmission between somatosensory afferents and motor efferents, and several other utilities.
+This repository accompanies the bioRxiv preprint:
 
+Virtual prototyping of non-invasive spinal cord electrical stimulation targeting upper limb motor function
+
+Abdallah Alashqar, Nabila Brihmat, Vincent Gemar, Zhaoshun Hu, Seong-Ryong Koh, Sandra Diaz-Pier, Roberto de Freitas, Atsushi Sasaki, Matija Milosevic, Rodolfo Keesey, Ismael Seáñez, Esra Neufeld, Hélène Cassoudesalle, Ursula Hofstötter, Karen Minassian, Fabien Wagner, Andreas Rowald
+
+bioRxiv (2026) 2026.01.22.701010  
+doi: 10.64898/2026.01.22.701010
+
+The repository provides several tools to facilitate virtual prototyping of neurostimulation paradigms. These include the simulation of axonal responses to externally applied electric fields, homonymous monosynaptic transmission between somatosensory afferents and motor efferents, and several other utilities.
 
 Below, we provide brief instructions to install the PyNS framework, run example tests that reproduce selected published simulations, and set up the codebase for future exploration and development of neurostimulation paradigms.
 
@@ -382,12 +390,12 @@ If this runs without errors, h5py is working correctly.
 
 ## Quick Start Guide With a Test Dataset
 
--	We provide a test dataset that can be used to reproduce selected published simulation results [DOI]. The dataset can be found under `./src/pyns/test_dataset` and contains the following:
-	-	`lumbar-tSCS_cathode_T11-T12_anode_navel-sides_units_V_m_cropped.h5`: A cropped potential field of the pre-simulated volume conductor finite-element model representing the lumbar transcutaneous spinal cord stimulation (tSCS) paradigm shown in **Extended Data Fig. 5b**[DOI].
+-	We provide a test dataset that can be used to reproduce selected published simulation results (see associated preprint). The dataset can be found under `./src/pyns/test_dataset` and contains the following:
+	-	`lumbar-tSCS_cathode_T11-T12_anode_navel-sides_units_V_m_cropped.h5`: A cropped potential field of the pre-simulated volume conductor finite-element model representing the lumbar transcutaneous spinal cord stimulation (tSCS) paradigm shown in **Extended Data Fig. 5b**.
 	-	`RightSoleusAxons_diams_from_Schalow1992_cropped.npy`: Axon trajectories for axons projecting to the right soleus muscle in the whole-body model, cropped peripherally at a craniocaudal level that fits within the boundaries of the cropped potential field.
 
 -	Run simulations with the test dataset:
-	- The test dataset is used by default in the simulation scripts when no arguments are provided for `field_path` and `axons_path` so you do not need to set those. To be able to run a quick test, you can limit the axons to be simulated to those only containing S1_DR and S1_VR for dorsal right S1 segment axons and ventral right S1 segment axons respectuvely. It is also recommended to always have passive end-nodes to avoid uninterpretable end-node activations. For this test run, all other configuration parameters should be fine with their default values. Please use the commands below in your terminal to run a titration example on the test dataset with the arguments described: (Please change -n parameters based on the number of processors available in your computer or remove `mpirun -n N` completely if parallel processing is not preferred)
+	- The test dataset is used by default in the simulation scripts when no arguments are provided for `field_path` and `axons_path` so you do not need to set those. To be able to run a quick test, you can limit the axons to be simulated to those only containing S1_DR and S1_VR for dorsal right S1 segment axons and ventral right S1 segment axons respectively. It is also recommended to always have passive end-nodes to avoid uninterpretable end-node activations. For this test run, all other configuration parameters should be fine with their default values. Please use the commands below in your terminal to run a titration example on the test dataset with the arguments described: (Please change -n parameters based on the number of processors available in your computer or remove `mpirun -n N` completely if parallel processing is not preferred)
 
 	To run titrations:
 	```
@@ -431,7 +439,7 @@ PyNS provides several command-line tools for simulations and postprocessing, as 
 #### 1. **pyns-run-titrations**
 
 Run titration simulations to find recruitment thresholds for populations of axons undergoing stimulation by externally applied electric fields. The two main input arguments are:
--	`field_path`: path to a file contaning a pre-simulated volume conductor finite-element model with potential values obtained at points of a rectilinear grid.
+-	`field_path`: path to a file containing a pre-simulated volume conductor finite-element model with potential values obtained at points of a rectilinear grid.
    - Supported file formats: `.npy` and `.h5`
    - Expected file contents: The file should contain the following key:value pairs
       - "x": point coordinates along the x-axis of the rectilinear grid in **meter** (numpy 1D array with shape: (X,))
@@ -446,12 +454,12 @@ Run titration simulations to find recruitment thresholds for populations of axon
 
 #### 2. **pyns-run-discrete-simulations**
 
-Run simulations of axon populations undergoing stimulation by externally applied electric fields with varying stimulation amplitudes. This command also enables simulating homonymous monosynaptic transmission between somatosensory afferents and motor efferents. The two main input arguments are the same as above (`field_path` and `axons_path`). Additional configuration parameters vary, especially those related to syaptic transmission.
+Run simulations of axon populations undergoing stimulation by externally applied electric fields with varying stimulation amplitudes. This command also enables simulating homonymous monosynaptic transmission between somatosensory afferents and motor efferents. The two main input arguments are the same as above (`field_path` and `axons_path`). Additional configuration parameters vary, especially those related to synaptic transmission.
 - Synaptic transmission configuration parameters and considerations:
    - `enable_synaptic_transmission`: This flag should be always set when synaptic transmission is to be simulated.
-   - `syn_weight`: This parameter determines the exceitatory postsynaptic potential (EPSP) caused by a single afferent action potential projecting to a single motoneuron.
+   - `syn_weight`: This parameter determines the excitatory postsynaptic potential (EPSP) caused by a single afferent action potential projecting to a single motoneuron.
    - `proj_freq`: This parameter determines the percentage of motoneurons within one group receiving inputs from somatosensory afferents.
-   - `sim_dur_afferent` and `sim_dur_efferent`: These are the simulation duration for afferents and simulation duration of efferents respectively. `sim_dur_afferent` should be long enough to cover the stimulus pulse used and at least 3 milliseconds afterwards to detec action potentials. Whereas `sim_dur_efferent` should be much longer (at least 2x`sim_dur_afferent`) since the detection of action potentials happens at the peripheral terminal of the axon (node 0). This is done to trace motor responses from peripheral termini to where they originated from.
+   - `sim_dur_afferent` and `sim_dur_efferent`: These are the simulation duration for afferents and simulation duration of efferents respectively. `sim_dur_afferent` should be long enough to cover the stimulus pulse used and at least 3 milliseconds afterwards to detect action potentials. Whereas `sim_dur_efferent` should be much longer (at least 2x`sim_dur_afferent`) since the detection of action potentials happens at the peripheral terminal of the axon (node 0). This is done to trace motor responses from peripheral termini to where they originated from.
    - Axon naming in the file located in `axons_path` should follow the following convention:
    `AxonSegment_AxonPosition_traj_TrajName_..._diam**DD**um`, whereby
       - AxonSegment $ \in $ {C1...S4}: needed to define afferent projection span across motoneurons in the spinal cord.
@@ -682,4 +690,4 @@ This will install additional development tools like pytest, black, and flake8.
 - Please visit the [Tutorials](./tutorials/) folder to get familiar with the main features and modules of PyNS, and to explore the results produced by different commands.
 
 ## Citations:
-- If you use this software in your research, please cite [insert doi link when available]
+- If you use this software in your research, please cite the associated bioRxiv preprint listed above. A journal DOI will be added upon publication.
