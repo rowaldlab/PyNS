@@ -24,12 +24,13 @@ PyNS requires only a standard computer. RAM requirement depends on the input dat
 ### OS requirements:
 PyNS is supported on macOS and Linux systems, including Windows Subsystem for Linux (WSL). This package has been tested on the following systems:
 - WSL: Ubuntu 24.04.3 with Windows 11 as the host
-- macOS: Tahoe 26.1
+- macOS: Tahoe v26.1 (Apple M3 Pro Chip)
+- macOS: Sonoma v14.6.1 (Apple M1 Max Chip)
 - Rockey Linux 9 (HPC environment)
 - AlmaLinux 8 (HPC environment)
 
 ### Python requirement:
-PyNS is written in Python and therefore needs Python to be installed before starting with the package installation. Python 3.12 is preferred, but we have also tested PyNS with Python 3.10 and 3.11.
+PyNS is written in Python and therefore needs Python to be installed before starting with the package installation. Python 3.12 is preferred, but we have also tested PyNS with Python 3.10.
 
 ## Installation guide:
 
