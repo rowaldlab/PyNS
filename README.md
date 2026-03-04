@@ -16,11 +16,26 @@ The repository provides several tools to facilitate virtual prototyping of neuro
 
 Below, we provide brief instructions to install the PyNS framework, run example tests that reproduce selected published simulations, and set up the codebase for future exploration and development of neurostimulation paradigms.
 
-## Installation
+## Hardware requirements:
+PyNS requires only a standard computer. RAM requirement depends on the input data used.
 
-PyNS is installable as a standard Python package in accordance with PEP 518. The installation process starts with setting up your platform-specific environment (Python, optional MPI, and optional virtual environment), followed by installing the PyNS framework itself.
+## Software requirements:
 
-**Pick one MPI and stick to it:** To avoid conflicts, install a single MPI stack and ensure its `mpicc`/`mpirun` are first on `PATH`. For new users, the conda-forge `openmpi` + `mpi4py` combo is recommended.
+### OS requirements:
+PyNS is supported on macOS and Linux systems, including Windows Subsystem for Linux (WSL). This package has been tested on the following systems:
+- WSL: Ubuntu 24.04.3 with Windows 11 as the host
+- macOS: Tahoe 26.1
+- Rockey Linux 9 (HPC environment)
+- AlmaLinux 8 (HPC environment)
+
+### Python requirement:
+PyNS is written in Python and therefore needs Python to be installed before starting with the package installation. Python 3.12 is preferred, but we have also tested PyNS with Python 3.10 and 3.11.
+
+## Installation guide:
+
+PyNS is installable as a standard Python package in accordance with PEP 518. The installation process starts with setting up your platform-specific environment (Python, optional virtual environment and MPI support), followed by installing the PyNS framework itself.
+
+Complete installation on a standard desktop takes 3-5 minutes.
 
 ### Step 1: Platform-Specific Environment Setup
 
@@ -63,26 +78,27 @@ Choose your platform below and follow the instructions to set up Python, an opti
    source pyns_env/bin/activate
    ```
 
-3. (Optional) Install MPI using Homebrew:
-   ```bash
-   brew install open-mpi
-   ```
-   - For Intel macOS:
-     ```bash
-     export DYLD_LIBRARY_PATH=/usr/local/lib:$DYLD_LIBRARY_PATH
-     ```
-   - For Apple Silicon:
-     ```bash
-     export DYLD_LIBRARY_PATH=/opt/homebrew/lib:$DYLD_LIBRARY_PATH
-     ```
+3. (Optional) Install MPI and mpi4py to support parallel processing:
+   - Install MPI:
+      ```bash
+      brew install open-mpi
+      ```
+   - Expose libraries paths:
+      - For Intel macOS:
+         ```bash
+         export DYLD_LIBRARY_PATH=/usr/local/lib:$DYLD_LIBRARY_PATH
+         ```
+      - For Apple Silicon:
+         ```bash
+         export DYLD_LIBRARY_PATH=/opt/homebrew/lib:$DYLD_LIBRARY_PATH
+         ```
+   - Install mpi4py:
+      ```bash
+      export MPICC=$(command -v mpicc)
+      pip install --no-binary=mpi4py mpi4py
+      ```
 
-4. (Optional) Install mpi4py if you installed MPI:
-   ```bash
-   export MPICC=$(command -v mpicc)
-   pip install --no-binary=mpi4py mpi4py
-   ```
-
-#### Linux
+#### Linux and WSL
 
 **Preparation: Install C++ compiler tools (required for NEURON mechanism compilation)**
 
@@ -101,7 +117,7 @@ sudo apt-get install make g++
    conda activate pyns
    ```
 
-3. (Optional) Install MPI for parallel processing:
+3. (Optional) Install MPI and mpi4py to support parallel processing:
    ```bash
    conda install -c conda-forge openmpi mpi4py
    ```
@@ -116,24 +132,17 @@ sudo apt-get install make g++
    source pyns_env/bin/activate
    ```
 
-3. (Optional) Install MPI using apt (Debian/Ubuntu):
-   ```bash
-   sudo apt-get install -y libopenmpi-dev openmpi-bin
-   ```
+3. (Optional) Install MPI and mpi4py to support parallel processing:
 
-4. (Optional) Install mpi4py if you installed MPI:
-   ```bash
-   export MPICC=$(command -v mpicc)
-   pip install --no-binary=mpi4py mpi4py
-   ```
-
-#### Windows
-
-**Use WSL (Windows Subsystem for Linux)**
-
-1. Install [WSL](https://learn.microsoft.com/en-us/windows/wsl/install)
-
-2. Follow the **Linux** instructions above within your WSL environment
+   - Install MPI using apt (Debian/Ubuntu):
+      ```bash
+      sudo apt-get install -y libopenmpi-dev openmpi-bin
+      ```
+   - Install mpi4py:
+      ```bash
+      export MPICC=$(command -v mpicc)
+      pip install --no-binary=mpi4py mpi4py
+      ```
 
 **MPI Verification (all platforms, optional):**
 
@@ -198,28 +207,8 @@ cd /path/to/PyNS
 
 ### Step 3: Install PyNS Package Dependencies
 
-**If using Conda (Step 1 Option A) (recommended):**
-
-Install all dependencies with conda first, then install PyNS without pulling deps via pip:
-
-**With MPI support (if you installed MPI in Step 1):**
 ```bash
-conda install -c conda-forge numpy scipy h5py mpi4py openmpi matplotlib pyvista pyyaml
-pip install neuron==8.2.4
-pip install --no-deps -e .
-```
-
-**Without MPI support:**
-```bash
-conda install -c conda-forge numpy scipy h5py matplotlib pyvista pyyaml
-pip install neuron==8.2.4
-pip install --no-deps -e .
-```
-
-**If using venv/virtualenv: (Step 1 Option B)**
-
-```bash
-pip install .
+pip install -e .
 ```
 
 ### Step 4: Compile NEURON mod files
@@ -231,7 +220,7 @@ nrnivmodl ./mod_files/**/*.mod
 
 **Common problems with `nrnivmodl` command**
 
-- If you are in a conda environment and you encounter an error saying `nrnivmodl: command not found`:
+- If you are in a conda environment and you encounter an error saying `nrnivmodl: command not found`, you need to use the full path of the neuron compiler:
   
   The path of the installed binaries is usually `$HOME/anaconda3/envs/pyns/bin`. Try using the full path:
   ```bash
@@ -240,79 +229,79 @@ nrnivmodl ./mod_files/**/*.mod
 
 - If you are on macOS and encounter an error saying `fatal error: 'iostream' file not found`:
 		
-		This error occurs when the C++ compiler cannot locate the standard library headers. The issue can happen with any Python environment (system Python, venv, virtualenv, or conda). Please try the following solutions in order:
-		
-		**Step 1: Ensure Xcode Command-Line Tools are properly installed (required for all environments)**
-		
-		**Note:** These commands may require administrator privileges. If you encounter a permission error, add `sudo` before the command.
-		```bash
-		xcode-select --install  # May need: sudo xcode-select --install
-		sudo xcode-select --reset
-		clang++ --version  # Verify installation
-		```
-		You should see output like: `Apple clang version X.X.X (clang-XXXX.X.X.X)` or similar. If you see `clang: command not found`, the installation failed. Please repeat the preceding commands with `sudo` if needed.
+   This error occurs when the C++ compiler cannot locate the standard library headers. The issue can happen with any Python environment (system Python, venv, virtualenv, or conda). Please try the following solutions in order:
+   
+   **Step 1: Ensure Xcode Command-Line Tools are properly installed (required for all environments)**
+   
+   **Note:** These commands may require administrator privileges. If you encounter a permission error, add `sudo` before the command.
+   ```bash
+   xcode-select --install  # May need: sudo xcode-select --install
+   sudo xcode-select --reset
+   clang++ --version  # Verify installation
+   ```
+   You should see output like: `Apple clang version X.X.X (clang-XXXX.X.X.X)` or similar. If you see `clang: command not found`, the installation failed. Please repeat the preceding commands with `sudo` if needed.
 
-		If installation succeeded, please try nrnivmodl again by running:
-		```bash
-		nrnivmodl ./mod_files/**/*.mod
-		```
+   If installation succeeded, please try nrnivmodl again by running:
+   ```bash
+   nrnivmodl ./mod_files/**/*.mod
+   ```
 
-		**Step 2: If the error persists, set the SDK path explicitly (works for all environments)**
-		
-		The compiler needs to know where to find the macOS SDK. Use one of these approaches:
-		
-		**Option A: Use xcrun to auto-detect the SDK path (recommended for all environments)**
-		```bash
-		export CXXFLAGS="-isysroot $(xcrun --show-sdk-path)"
-		export LDFLAGS="-isysroot $(xcrun --show-sdk-path)"
-		nrnivmodl ./mod_files/**/*.mod
-		```
-		
-		**Option B: Set include paths directly (alternative for stubborn cases)**
-		```bash
-		export C_INCLUDE_PATH="$(xcrun --show-sdk-path)/usr/include"
-		export CPLUS_INCLUDE_PATH="$(xcrun --show-sdk-path)/usr/include"
-		nrnivmodl ./mod_files/**/*.mod
-		```
-		
-		**Option C: Specify the SDK path manually**
-		```bash
-		# For most installations
-		export CXXFLAGS="-isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk"
-		export LDFLAGS="-isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk"
-		nrnivmodl ./mod_files/**/*.mod
-		```
+   **Step 2: If the error persists, set the SDK path explicitly (works for all environments)**
+   
+   The compiler needs to know where to find the macOS SDK. Use one of these approaches:
+   
+   **Option A: Use xcrun to auto-detect the SDK path (recommended for all environments)**
+   ```bash
+   export CXXFLAGS="-isysroot $(xcrun --show-sdk-path)"
+   export LDFLAGS="-isysroot $(xcrun --show-sdk-path)"
+   nrnivmodl ./mod_files/**/*.mod
+   ```
+   
+   **Option B: Set include paths directly (alternative for stubborn cases)**
+   ```bash
+   export C_INCLUDE_PATH="$(xcrun --show-sdk-path)/usr/include"
+   export CPLUS_INCLUDE_PATH="$(xcrun --show-sdk-path)/usr/include"
+   nrnivmodl ./mod_files/**/*.mod
+   ```
+   
+   **Option C: Specify the SDK path manually**
+   ```bash
+   # For most installations
+   export CXXFLAGS="-isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk"
+   export LDFLAGS="-isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk"
+   nrnivmodl ./mod_files/**/*.mod
+   ```
 
-		**Step 3: Conda-specific alternative (only if using conda environment)**
-		
-		If you're using a conda environment and the above solutions don't work, conda's compiler toolchain may be interfering. Install conda's compiler toolchain instead:
-		
-		**For Apple Silicon:**
-		```bash
-		conda install -c conda-forge clang_osx-arm64 clangxx_osx-arm64
-		nrnivmodl ./mod_files/**/*.mod
-		```
-		
-		**For Intel macOS:**
-		```bash
-		conda install -c conda-forge clang_osx-64 clangxx_osx-64
-		nrnivmodl ./mod_files/**/*.mod
-		```
+   **Step 3: Conda-specific alternative (only if using conda environment)**
+   
+   If you're using a conda environment and the above solutions don't work, conda's compiler toolchain may be interfering. Install conda's compiler toolchain instead:
+   
+   **For Apple Silicon:**
+   ```bash
+   conda install -c conda-forge clang_osx-arm64 clangxx_osx-arm64
+   nrnivmodl ./mod_files/**/*.mod
+   ```
+   
+   **For Intel macOS:**
+   ```bash
+   conda install -c conda-forge clang_osx-64 clangxx_osx-64
+   nrnivmodl ./mod_files/**/*.mod
+   ```
 
-		**Step 4: Last resort - Completely reinstall Command Line Tools (if all above solutions failed)**
-		
-		If none of the above solutions work, the Command Line Tools installation may be corrupted. Completely remove and reinstall them:
-		
-		**Warning:** This will remove the entire Command Line Tools installation. Administrator privileges are required.
-		```bash
-		sudo rm -rf /Library/Developer/CommandLineTools/
-		sudo xcode-select --install
-		```
-		
-		Then try nrnivmodl again:
-		```bash
-		nrnivmodl ./mod_files/**/*.mod
-		```
+   **Step 4: Last resort - Completely reinstall Command Line Tools (if all above solutions failed)**
+   
+   If none of the above solutions work, the Command Line Tools installation may be corrupted. Completely remove and reinstall them:
+   
+   **Warning:** This will remove the entire Command Line Tools installation. Administrator privileges are required.
+   ```bash
+   sudo rm -rf /Library/Developer/CommandLineTools/
+   sudo xcode-select --install
+   ```
+   
+   Then try nrnivmodl again:
+   ```bash
+   nrnivmodl ./mod_files/**/*.mod
+   ```
 
 ### Step 5: Verify Successful Compilation
 
@@ -328,12 +317,7 @@ ls -la x86_64/libnrnmech.dylib
 ls -la arm64/libnrnmech.dylib
 ```
 
-**Linux:**
-```bash
-ls -la x86_64/libnrnmech.so
-```
-
-**Windows (WSL):**
+**Linux and WSL:**
 ```bash
 ls -la x86_64/libnrnmech.so
 ```
@@ -349,9 +333,7 @@ If you plan to use the test dataset (which is in HDF5 format), ensure h5py is li
 python -c "import h5py; print(h5py.__version__); print(h5py.version.hdf5_version)"
 ```
 
-**If you see an error like "file signature not found" when loading HDF5 files:**
-
-This indicates h5py is using an incompatible HDF5 library version. The solution depends on your environment:
+**If you see an error, this means `h5py` must be reinstalled:**
 
 **For conda environments (all platforms):**
 ```bash
@@ -377,58 +359,54 @@ pip install --upgrade --force-reinstall h5py
   ```
   Then use conda-forge or pip h5py.
 
-- **Linux (other distros):** Similarly, uninstall system HDF5 dev packages and rely on conda-forge or pip h5py binaries.
-
-**Verify after reinstall:**
-After reinstalling h5py, test that it can read HDF5 files:
-```bash
-python -c "import h5py; f = h5py.File('./src/pyns/test_dataset/lumbar-tSCS_cathode_T11-T12_anode_navel-sides_units_V_m_cropped.h5', 'r'); print('Success:', list(f.keys())); f.close()"
-```
-
-If this runs without errors, h5py is working correctly.
-
-
-## Quick Start Guide With a Test Dataset
+## Quick Start guide with a test dataset
 
 -	We provide a test dataset that can be used to reproduce selected published simulation results (see associated preprint). The dataset can be found under `./src/pyns/test_dataset` and contains the following:
 	-	`lumbar-tSCS_cathode_T11-T12_anode_navel-sides_units_V_m_cropped.h5`: A cropped potential field of the pre-simulated volume conductor finite-element model representing the lumbar transcutaneous spinal cord stimulation (tSCS) paradigm shown in **Extended Data Fig. 5b**.
 	-	`RightSoleusAxons_diams_from_Schalow1992_cropped.npy`: Axon trajectories for axons projecting to the right soleus muscle in the whole-body model, cropped peripherally at a craniocaudal level that fits within the boundaries of the cropped potential field.
 
 -	Run simulations with the test dataset:
-	- The test dataset is used by default in the simulation scripts when no arguments are provided for `field_path` and `axons_path` so you do not need to set those. To be able to run a quick test, you can limit the axons to be simulated to those only containing S1_DR and S1_VR for dorsal right S1 segment axons and ventral right S1 segment axons respectively. It is also recommended to always have passive end-nodes to avoid uninterpretable end-node activations. For this test run, all other configuration parameters should be fine with their default values. Please use the commands below in your terminal to run a titration example on the test dataset with the arguments described: (Please change -n parameters based on the number of processors available in your computer or remove `mpirun -n N` completely if parallel processing is not preferred)
-
-	To run titrations:
-	```
-	mpirun -n 10 pyns-run-titrations --axons_kws_any S1_DR S1_VR --passive_end_nodes
-	```
-	To run discrete simulations with synaptic transmission:
-	```
-	mpirun -n 10 pyns-run-discrete-simulations --axons_kws_any S1_DR S1_VR --passive_end_nodes --enable_synaptic_transmission
-	```
-	By not providing a `results_dir` argument, results will be saved under `./results`
 	
-	**Note:** If you encounter an h5py error (e.g., "file signature not found"), please refer to the **Verify h5py and HDF5 compatibility** section above for troubleshooting steps.
-- Upon completion of the simulations, you can run the following postprocessing commands to generate plots of the results:
+      The test dataset is used by default in the simulation scripts when no arguments are provided for `field_path` and `axons_path` so you do not need to set those. To be able to run a quick test, you can limit the axons to be simulated to those only containing S1_DR and S1_VR for dorsal right S1 segment axons and ventral right S1 segment axons respectively. It is also recommended to always have passive end-nodes to avoid uninterpretable end-node activations. For this test run, all other configuration parameters should be fine with their default values. Please use the commands below in your terminal to run a titration example on the test dataset with the arguments described: (Please change -n parameters based on the number of processors available in your computer or remove `mpirun -n N` completely if parallel processing is not preferred)
 
-	- Titrations:
-		```bash
-		pyns-postprocess-titrations ./results
-		```
+      - To run titrations:
 
-	- Discrete simulations:
-		```bash
-		pyns-postprocess-discrete-simulations ./results
-		```
+         **Expected runtime is 25-30 minutes when using 6 parallel processors**
+         ```
+         mpirun -n 6 pyns-run-titrations --axons_kws_any S1_DR S1_VR --passive_end_nodes
+         ```
 
-	- Where to find the outputs (default): If you do not set `--postprocessed-dir`, both commands create a sibling directory named `<results_dir>_postprocessed` next to your input results and mirror the same internal folder structure. For example:
-		- Input results root: `./results`
-		- Postprocessed root (created): `./results_postprocessed`
-		- Per run folder (example): `./results_postprocessed/2026-01-21_06-56-27_1/`
-			- Contains the generated figures for that run and a copy of the used config YAML.
+      - To run discrete simulations with synaptic transmission:
 
-	- Notes:
-		- The postprocessing commands automatically detect and process only the results relevant to them (titrations vs discrete simulations).
-		- You can customize groups, separators, and other options as documented above (see each command's Key options).
+         **Expected runtime is around 30-40 minutes when using 6 parallel processors**
+         ```
+         mpirun -n 6 pyns-run-discrete-simulations --axons_kws_any S1_DR S1_VR --passive_end_nodes --enable_synaptic_transmission
+         ```
+	   
+      By not providing a `results_dir` argument, results will be saved under `./results`
+	
+   - Upon completion of the simulations, you can run the following postprocessing commands to generate plots of the results:
+
+      - Titrations:
+         ```bash
+         pyns-postprocess-titrations ./results
+         ```
+
+      - Discrete simulations:
+         ```bash
+         pyns-postprocess-discrete-simulations ./results
+         ```
+
+      - Where to find the outputs (default): If you do not set `--postprocessed-dir`, both commands create a sibling directory named `<results_dir>_postprocessed` next to your input results and mirror the same internal folder structure. For example:
+         - Input results root: `./results`
+         - Postprocessed root (created): `./results_postprocessed`
+         - Per run folder (example): `./results_postprocessed/2026-01-21_06-56-27_1/`
+            - Contains the generated figures for that run and a copy of the used config YAML.
+
+      - Notes:
+         - The postprocessing commands automatically detect and process only the results relevant to them (titrations vs discrete simulations).
+         - You can customize groups, separators, and other options as documented above (see each command's Key options).
+         - Processing of a single simulation result for a single axons group takes around 10 seconds.
 
 ## Commands Functionality Details
 
@@ -671,16 +649,8 @@ For development, please install in editable mode with dev dependencies:
 
 **With MPI support (recommended for parallel processing):**
 ```bash
-conda install -c conda-forge numpy scipy h5py mpi4py openmpi matplotlib pyvista pyyaml pytest black flake8
-pip install neuron==8.2.4
-pip install --no-deps -e ".[dev]"
-```
-
-**Without MPI support:**
-```bash
-conda install -c conda-forge numpy scipy h5py matplotlib pyvista pyyaml pytest black flake8
-pip install neuron==8.2.4
-pip install --no-deps -e ".[dev]"
+conda install -c conda-forge mpi4py openmpi #Optional for MPI support
+pip install -e ".[dev]"
 ```
 
 This will install additional development tools like pytest, black, and flake8.
