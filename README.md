@@ -38,7 +38,7 @@ PyNS is installable as a standard Python package in accordance with PEP 518. The
 
 Complete installation on a standard desktop takes 3-5 minutes.
 
-### Step 1: Platform-Specific Environment Setup
+### Step 1: Setup your environment (platform-specific)
 
 Choose your platform below and follow the instructions to set up Python, an optional virtual environment, and optional MPI support for parallel processing.
 
@@ -157,7 +157,7 @@ Expected output:
 - The first command should display MPI build and version information (e.g., "Version:xx, Release Date:yy")
 - The second command should print a tuple showing the MPI version (e.g., `(3, 1)` or `(4, 0)`)
 
-### Step 2: Clone or Download the PyNS Repository
+### Step 2: Clone or download the PyNS repository
 
 **Option A: Using git clone (recommended)**
 
@@ -206,7 +206,7 @@ cd /path/to/PyNS
   git lfs pull
   ```
 
-### Step 3: Install PyNS Package Dependencies
+### Step 3: Install PyNS package
 
 ```bash
 pip install -e .
@@ -304,7 +304,7 @@ nrnivmodl ./mod_files/**/*.mod
    nrnivmodl ./mod_files/**/*.mod
    ```
 
-### Step 5: Verify Successful Compilation
+### Step 5: Verify successful compilation
 
 After `nrnivmodl` completes, check for the compiled library. The location depends on your platform:
 
@@ -325,7 +325,7 @@ ls -la x86_64/libnrnmech.so
 
 If the file exists, compilation was successful and you can proceed to the [Quick Start Guide](#quick-start-guide-with-a-test-dataset).
 
-### Step 6 (Optional): Verify h5py and HDF5 Compatibility
+### Step 6 (Optional): Verify h5py and HDF5 compatibility
 
 If you plan to use the test dataset (which is in HDF5 format), ensure h5py is linked to a compatible HDF5 library. System package managers or package conflicts can cause h5py to use incompatible HDF5 versions.
 
