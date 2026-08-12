@@ -32,7 +32,6 @@ from .utils import (
     create_cont_stim_waveform,
     pulse_file_to_pulse,
     filter_axon_trajectories,
-    create_single_pulse_waveform,
     axon_dicts_to_afferent_efferent_groups,
     axon_names_to_traj_groups,
     save_results,
@@ -147,8 +146,8 @@ if __name__ == "__main__":
         folder_name = f"{sub_dirname}_{config.results_dir_suffix}"
     else:
         folder_name = f"{sub_dirname}"
-    results_dir_sim = os.path.join(config.results_dir, folder_name)
     if rank == 0:
+        results_dir_sim = os.path.join(config.results_dir, folder_name)
         results_dir_sim_n = 0
         while os.path.isdir(results_dir_sim):
             results_dir_sim_n += 1
@@ -463,19 +462,31 @@ if __name__ == "__main__":
         if rank == 0:
             print(f"\tRANK 0: Finished simulating afferent axons in {t2-t1} seconds!", flush=True)
             # gather results
-        afferent_results_gathered = comm.gather(afferent_results, root=0)
+        comm.Barrier()
+        # dump results of each process to a file to avoid memory issues when gathering large results
+        temp_process_results_path = os.path.join(results_dir_sim, f"axon_results_rank_{rank}.npy")
+        save_results(afferent_results, temp_process_results_path)
+        # afferent_results_gathered = comm.gather(afferent_results, root=0)
+        if rank == 0:
+            # print(f"\tGathered results from all processors!", flush=True)
+            print(f"\tSaved results of each processor to file to avoid memory issues when gathering large results!", flush=True)
+        comm.Barrier()
+        # now load results from all processors and gather in a list
+        afferent_results_gathered = []
+        for r in range(size):
+            temp_process_results_path = os.path.join(results_dir_sim, f"axon_results_rank_{r}.npy")
+            if os.path.isfile(temp_process_results_path):
+                process_results = np.load(temp_process_results_path, allow_pickle=True)[()]
+                afferent_results_gathered.append(process_results)
+            else:
+                print(f"\tWarning: Results file for rank {r} not found at {temp_process_results_path}!", flush=True)
+                afferent_results_gathered.append({})
+        afferent_results_all = {
+            ax_name: ax_sim_res for ax_sims_res in afferent_results_gathered for ax_name, ax_sim_res in ax_sims_res.items()
+        }
+        axon_results_all.update(afferent_results_all)
         if rank == 0:
             print(f"\tGathered results from all processors!", flush=True)
-        comm.Barrier()
-        # results is a dictionary, keys are axon names, values are dictionaries with results
-        if rank == 0:
-            # gather all results in one dict
-            afferent_results_all = {
-                ax_name: ax_sim_res for ax_sims_res in afferent_results_gathered for ax_name, ax_sim_res in ax_sims_res.items()
-            }
-            axon_results_all.update(afferent_results_all)
-        else:
-            afferent_results_all = None
 
         # if afferents_only is True, save results and exit
         if config.afferents_only:
@@ -491,8 +502,13 @@ if __name__ == "__main__":
                 print("----------------------------------------------------", flush=True)
             sys.exit()
 
-        afferent_results_all = comm.bcast(afferent_results_all, root=0)
-
+        comm.Barrier()
+        # now remove temporary files
+        if rank == 0:
+            for r in range(size):
+                temp_process_results_path = os.path.join(results_dir_sim, f"axon_results_rank_{r}.npy")
+                if os.path.isfile(temp_process_results_path):
+                    os.remove(temp_process_results_path)
         comm.Barrier()
         if rank == 0:
             print(f"\tBroadcasted results to all processors!", flush=True)
@@ -549,9 +565,24 @@ if __name__ == "__main__":
         t2 = time.perf_counter()
         if rank == 0:
             print(f"\tRANK 0: Finished simulating efferent axons in {t2-t1} seconds!", flush=True)
-        efferent_results_gathered = comm.gather(efferent_results, root=0)
+        # write results of each process to a file to avoid memory issues when gathering large results
+        temp_process_results_path = os.path.join(results_dir_sim, f"eff_axon_results_rank_{rank}.npy")
+        save_results(efferent_results, temp_process_results_path)
+        comm.Barrier()
         if rank == 0:
             print(f"\tGathered efferent results from all processors!", flush=True)
+            # now load results from all processors and gather in a list
+            efferent_results_gathered = []
+            for r in range(size):
+                temp_process_results_path = os.path.join(results_dir_sim, f"eff_axon_results_rank_{r}.npy")
+                if os.path.isfile(temp_process_results_path):
+                    process_results = np.load(temp_process_results_path, allow_pickle=True)[()]
+                    efferent_results_gathered.append(process_results)
+                    # now remove temporary file
+                    os.remove(temp_process_results_path)
+                else:
+                    print(f"\tWarning: Results file for rank {r} not found at {temp_process_results_path}!", flush=True)
+                    efferent_results_gathered.append({})
         comm.Barrier()
         if rank == 0:
             efferent_results_all = {
@@ -642,7 +673,7 @@ if __name__ == "__main__":
         print("----------------------------------------------------", flush=True)
     else:
         pass
-    
+
     if not MPI is None:
         MPI.COMM_WORLD.Barrier()
 

@@ -30,7 +30,6 @@ import datetime
 from .utils import (
     pulse_file_to_pulse,
     filter_axon_trajectories,
-    create_single_pulse_waveform,
     create_cont_stim_waveform,
     save_results,
     DummyComm,
@@ -70,8 +69,8 @@ if __name__ == "__main__":
         folder_name = f"{datetime_str}_{config.results_dir_suffix}"
     else:
         folder_name = f"{datetime_str}"
-    results_dir_sim = os.path.join(config.results_dir, folder_name)
     if rank == 0:
+        results_dir_sim = os.path.join(config.results_dir, folder_name)
         results_dir_sim_n = 0
         while os.path.isdir(results_dir_sim):
             results_dir_sim_n += 1
@@ -396,8 +395,24 @@ if __name__ == "__main__":
             flush=True,
         )
         t_gather_start = time.perf_counter()
-    axon_results_gathered = comm.gather(axons_results, root=0)
+    # insead of gathering all results at once, dump each process's results in a separate file and then load and combine them in the root process to avoid memory issues
+    axon_results_path = os.path.join(results_dir_sim, f"axon_results_rank_{rank}.npy")
+    save_results(axons_results, axon_results_path)
+    # axon_results_gathered = comm.gather(axons_results, root=0)
+    # make sure all processes have finished writing their results before the root process tries to read them
+    comm.Barrier()
     if rank == 0:
+        # now load all results and combine them into one dictionary (print a warning if some files are missing)
+        for r in range(size):
+            if not os.path.isfile(os.path.join(results_dir_sim, f"axon_results_rank_{r}.npy")):
+                print(f"Warning: Missing results file for rank {r} at {os.path.join(results_dir_sim, f'axon_results_rank_{r}.npy')}")
+        axon_results_gathered = []
+        for r in range(size):
+            axon_results_path_r = os.path.join(results_dir_sim, f"axon_results_rank_{r}.npy")
+            if os.path.isfile(axon_results_path_r):
+                axon_results_gathered.append(np.load(axon_results_path_r, allow_pickle=True))
+            else:
+                print(f"Warning: Skipping missing results file for rank {r} at {axon_results_path_r}")
         axon_results_all = {
             k: v
             for sublist in axon_results_gathered
@@ -425,6 +440,11 @@ if __name__ == "__main__":
 
         output_npy_path = os.path.join(results_dir_sim, "axons_titration_results.npy")
         save_results(axon_results_all, output_npy_path)
+        # now loop over the individual process results files and delete them to save space
+        for r in range(size):
+            axon_results_path_r = os.path.join(results_dir_sim, f"axon_results_rank_{r}.npy")
+            if os.path.isfile(axon_results_path_r):
+                os.remove(axon_results_path_r)
         print("----------------------------------------------------", flush=True)
     else:
         pass
