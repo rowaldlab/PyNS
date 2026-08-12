@@ -25,6 +25,7 @@ dependencies = [
     "pyvista==0.44.1",
     "neuron==8.2.4",
     "pyyaml==6.0.2",
+    "vtk==9.3.1",
 ]
 
 [project.optional-dependencies]

@@ -81,11 +81,15 @@ if __name__ == "__main__":
         settings_file_path = os.path.join(results_dir_sim, "titrations_config.yaml")
         with open(settings_file_path, 'w') as file:
             yaml.dump(config_dict, file)
+    else:
+        results_dir_sim = None
+    # broadcast results_dir_sim to all ranks
+    results_dir_sim = comm.bcast(results_dir_sim, root=0)
 
     if rank == 0:
         print("******************************", flush=True)
         print(
-            f"Starting simulations for EM field in {os.path.basename(config.field_path)}...",
+            f"Starting simulations for EM fields in {[os.path.basename(field_path) for field_path in config.field_path]}...",
             flush=True,
         )
 
@@ -93,30 +97,41 @@ if __name__ == "__main__":
     if rank == 0:
         t_start_all = time.perf_counter()
         print(f"\tLoading field...", flush=True)
-    if config.field_path.endswith(".npy") and os.path.isfile(config.field_path):
-        field_dict = np.load(config.field_path, allow_pickle=True)[()]
-    elif config.field_path.endswith(".h5") and os.path.isfile(config.field_path):
-        with h5py.File(config.field_path, "r") as f:
-            field_dict = {key: f[key][()] for key in f.keys()}
-    else:
-        if rank == 0:
-            if not os.path.isfile(config.field_path):
-                error_msg = f"field_path {config.field_path} does not exist!"
-            else:
-                error_msg = f"field_path {config.field_path} must be a .npy or .h5 file!"
-            raise ValueError(error_msg)
-        sys.exit()
-
-    field_dict["x"] *= 1e6  # m to um
-    field_dict["y"] *= 1e6  # m to um
-    field_dict["z"] *= 1e6  # m to um
+    # handle field_path as a list of paths (for multiple field files) or a single path (for one field file)
+    field_dicts = []
+    field_paths = config.field_path if isinstance(config.field_path, list) else [config.field_path]
+    for field_path in field_paths:
+        if field_path.endswith(".npy") and os.path.isfile(field_path):
+            field_dict = np.load(field_path, allow_pickle=True)[()]
+        elif field_path.endswith(".h5") and os.path.isfile(field_path):
+            with h5py.File(field_path, "r") as f:
+                field_dict = {key: f[key][()] for key in f.keys()}
+        else:
+            if rank == 0:
+                if not os.path.isfile(field_path):
+                    error_msg = f"field_path {field_path} does not exist!"
+                else:
+                    error_msg = f"field_path {field_path} must be a .npy or .h5 file!"
+                raise ValueError(error_msg)
+            sys.exit()
+        field_dict["x"] *= 1e6  # m to um
+        field_dict["y"] *= 1e6  # m to um
+        field_dict["z"] *= 1e6  # m to um
+        field_dicts.append(field_dict)
 
     if rank == 0:
         print(f"\tLoading axon coordinates...", flush=True)
+        # first get min and max of x, y, z across all field_dicts to define the range for filtering axons
+        x_min = min([field_dict["x"].min() for field_dict in field_dicts])
+        x_max = max([field_dict["x"].max() for field_dict in field_dicts])
+        y_min = min([field_dict["y"].min() for field_dict in field_dicts])
+        y_max = max([field_dict["y"].max() for field_dict in field_dicts])
+        z_min = min([field_dict["z"].min() for field_dict in field_dicts])
+        z_max = max([field_dict["z"].max() for field_dict in field_dicts])
         # define the range used to filter axons with a safety margin of 1000 um on each side
-        x_range = [field_dict["x"].min() + 1000, field_dict["x"].max() - 1000]
-        y_range = [field_dict["y"].min() + 1000, field_dict["y"].max() - 1000]
-        z_range = [field_dict["z"].min() + 1000, field_dict["z"].max() - 1000]
+        x_range = [x_min + 1000, x_max - 1000]
+        y_range = [y_min + 1000, y_max - 1000]
+        z_range = [z_min + 1000, z_max - 1000]
         if os.path.isdir(config.axons_path):
             subgroup_filenames = os.listdir(config.axons_path)
             # print(f"\tShortlested axon names: {short_list}")
@@ -151,8 +166,8 @@ if __name__ == "__main__":
         )
         
         if config.debug:
-            axon_dicts = np.random.choice(axon_dicts, 5)
-            # axon_dicts = axon_dicts[100:105]
+            if len(axon_dicts) > 5:
+                axon_dicts = np.random.choice(axon_dicts, 5, replace=False)
             print(
                 f"Axons names to simulate: {[axd['axon_name'] for axd in axon_dicts]}"
             )
@@ -163,47 +178,82 @@ if __name__ == "__main__":
         # params_dicts = None
     axon_dicts = comm.bcast(axon_dicts, root=0)
 
+    stim_pulses_t = []
+    stim_pulses = []
     if config.pulse_path is not None:
         if rank == 0:
             print(f"\tLoading pulse from {config.pulse_path}...", flush=True)
-        stim_t, stim_pulse = pulse_file_to_pulse(config.pulse_path, stim_dur=config.sim_dur, time_step=config.time_step)
+        # check if it is a list of paths or a single path
+        pulse_paths = config.pulse_path if isinstance(config.pulse_path, list) else [config.pulse_path]
+        for pulse_path in pulse_paths:
+            if not os.path.isfile(pulse_path):
+                if rank == 0:
+                    raise ValueError(f"pulse_path {pulse_path} does not exist!")
+                sys.exit()
+            stim_t, stim_pulse = pulse_file_to_pulse(pulse_path, stim_dur=config.sim_dur, time_step=config.time_step)
+            stim_pulses_t.append(stim_t)
+            stim_pulses.append(stim_pulse)
     else:
-        if config.pulse_shape not in ["biphasic", "monophasic"]:
+        # now check that pulse_shape and all other waveform parameters are lists or single values
+        pulse_shapes = config.pulse_shape if isinstance(config.pulse_shape, list) else [config.pulse_shape]
+        pulse_amplitudes = config.pulse_amplitude if isinstance(config.pulse_amplitude, list) else [config.pulse_amplitude]
+        pulse_widths = config.pulse_width if isinstance(config.pulse_width, list) else [config.pulse_width]
+        pulse_silence_periods = config.pulse_silence_period if isinstance(config.pulse_silence_period, list) else [config.pulse_silence_period]
+        cont_stim_freqs = config.cont_stim_freq if isinstance(config.cont_stim_freq, list) else [config.cont_stim_freq]
+        cont_stim_carrier_freqs = config.cont_stim_carrier_freq if isinstance(config.cont_stim_carrier_freq, list) else [config.cont_stim_carrier_freq]
+        # for any parameter if its length is 1, then repeat it to match the length of field_dicts, otherwise raise an error if the lengths are not equal
+        max_len_waveform_params = max(len(pulse_shapes), len(pulse_amplitudes), len(pulse_widths), len(pulse_silence_periods), len(cont_stim_freqs), len(cont_stim_carrier_freqs))
+        if max_len_waveform_params != len(field_dicts) and max_len_waveform_params != 1:
             if rank == 0:
-                raise ValueError(f"Invalid pulse_shape argument: {config.pulse_shape}. Accepted arguments: 'biphasic', 'monophasic'")
+                raise ValueError(
+                    "pulse_shape, pulse_amplitude, pulse_width, pulse_silence_period, cont_stim_freq, cont_stim_carrier_freq, and field_dicts must all have the same length or have length 1!"
+                )
             sys.exit()
-        biphasic_flag = False
-        if config.pulse_shape == "biphasic":
-            biphasic_flag = True
-        if config.cont_stim_waveform:
+        if len(pulse_shapes) == 1:
+            pulse_shapes = pulse_shapes * len(field_dicts)
+        if len(pulse_amplitudes) == 1:
+            pulse_amplitudes = pulse_amplitudes * len(field_dicts)
+        if len(pulse_widths) == 1:
+            pulse_widths = pulse_widths * len(field_dicts)
+        if len(pulse_silence_periods) == 1:
+            pulse_silence_periods = pulse_silence_periods * len(field_dicts)
+        if len(cont_stim_freqs) == 1:
+            cont_stim_freqs = cont_stim_freqs * len(field_dicts)
+        if len(cont_stim_carrier_freqs) == 1:
+            cont_stim_carrier_freqs = cont_stim_carrier_freqs * len(field_dicts)
+        for i in range(len(pulse_shapes)):
+            if rank == 0:
+                print(f"\tCreating pulse waveform {i+1} of {len(pulse_shapes)}...", flush=True)
+            if pulse_shapes[i] not in ["biphasic", "monophasic"]:
+                if rank == 0:
+                    raise ValueError(f"Invalid pulse_shape argument: {pulse_shapes[i]}. Accepted arguments: 'biphasic', 'monophasic'")
+                sys.exit()
+            biphasic_flag = False
+            if pulse_shapes[i] == "biphasic":
+                biphasic_flag = True
             stim_t, stim_pulse = create_cont_stim_waveform(
-                silence_period=config.pulse_silence_period,
-                burst_freq=config.cont_stim_freq,
-                burst_width=config.pulse_width,
-                freq=config.cont_stim_carrier_freq,
+                silence_period=pulse_silence_periods[i],
+                burst_freq=cont_stim_freqs[i],
+                burst_width=pulse_widths[i],
+                carrier_freq=cont_stim_carrier_freqs[i],
                 time_step=config.time_step,
                 total_stim_dur=config.sim_dur,
                 biphasic=biphasic_flag,
-                amplitude=config.pulse_amplitude,
+                amplitude=pulse_amplitudes[i],
             )
-        else:
-            stim_t, stim_pulse = create_single_pulse_waveform(
-                amplitude=config.pulse_amplitude,
-                time_step=config.time_step,
-                biphasic=biphasic_flag,
-                start_at=config.pulse_silence_period,
-                end_at=config.pulse_silence_period + config.pulse_width,
-                stim_dur=config.sim_dur,
-            )
+            stim_pulses_t.append(stim_t)
+            stim_pulses.append(stim_pulse)
+            field_base_name = os.path.basename(field_paths[i])
+            if rank == 0:
+                # create a plot of the pulse and save in the results directory
+                fig = plt.figure(figsize=(20, 5))
+                plt.plot(stim_t, stim_pulse)
+                plt.xlabel("Time (ms)")
+                plt.ylabel("Amplitude (a.u.)")
+                plt.title("Stim. Pulse")
+                plt.savefig(os.path.join(results_dir_sim, f"stim_pulse_{field_base_name}.png"))
+                plt.close()
     if rank == 0:
-        # create a plot of the pulse and save in the results directory
-        fig = plt.figure(figsize=(20, 5))
-        plt.plot(stim_t, stim_pulse)
-        plt.xlabel("Time (ms)")
-        plt.ylabel("Amplitude (a.u.)")
-        plt.title("Stim. Pulse")
-        plt.savefig(os.path.join(results_dir_sim, "stim_pulse.png"))
-        plt.close()
         print(
             f"\tA total of {len(axon_dicts)} axons will be split on {size} processors",
             flush=True,
@@ -235,7 +285,7 @@ if __name__ == "__main__":
     else:
         efferents_discretized = discretize_and_interpolate_v(
             efferent_axons_sub_list,
-            field_dict,
+            field_dicts,
             model_type=model_type,
             tuned_flag=tuned_flag,
             motoneuron=True,
@@ -246,7 +296,7 @@ if __name__ == "__main__":
     else:
         other_discretized = discretize_and_interpolate_v(
             other_axons_sub_list,
-            field_dict,
+            field_dicts,
             model_type=model_type,
             tuned_flag=tuned_flag,
             motoneuron=False,
@@ -269,7 +319,7 @@ if __name__ == "__main__":
     if rank == 0:
         print(f"\tFinished discretizing axons!", flush=True)
 
-    field_dict = None
+    field_dicts = None
     record_v_default = config.record_v
     while len(axons_sub_list) > 0:
         if rank == 0:
@@ -285,8 +335,8 @@ if __name__ == "__main__":
                     record_v = True
             result, axon_obj_dict = simulate_axon(
                 axon_obj_dict=axon_obj_dict, 
-                stim_pulse=stim_pulse,
-                stim_factor=axon_obj_dict["stim_factor"],
+                stim_pulses=stim_pulses,
+                stim_factors=[axon_obj_dict["stim_factor"]]*len(stim_pulses),
                 passive_end_nodes=config.passive_end_nodes,
                 prepassive_nodes_as_endnodes=config.prepassive_nodes_as_endnodes,
                 debug=config.debug,
@@ -379,6 +429,7 @@ if __name__ == "__main__":
     else:
         pass
 
-    MPI.COMM_WORLD.Barrier()
+    if not MPI is None:
+        MPI.COMM_WORLD.Barrier()
 
     sys.exit()

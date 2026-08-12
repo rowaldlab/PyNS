@@ -53,8 +53,8 @@ pulse_amplitude: 1.0
 pulse_width: 0.2
 # Continuous stimulation parameters
 cont_stim_waveform: false
-cont_stim_freq: 40.0
-cont_stim_carrier_freq: 10000.0
+cont_stim_freq: 0.0
+cont_stim_carrier_freq: 0.0
 
 # Model parameters
 model_variant: "Alashqar"  # Options: "Alashqar", "Gaines", "MRG"

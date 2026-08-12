@@ -166,8 +166,8 @@ def pulse_file_to_pulse(pulse_path, stim_dur=5, time_step=0.025, start_at=0):
 
 def create_cont_stim_waveform(
     silence_period=1,
-    burst_freq=30,
-    carrier_freq=10000,
+    burst_freq=0,
+    carrier_freq=0,
     burst_width=1,
     time_step=0.005,
     total_stim_dur=250,
@@ -182,16 +182,13 @@ def create_cont_stim_waveform(
     # first generate the 10 kHz pulse
     time_vector_one_pulse = np.arange(0, burst_width, time_step)
     sq_signal = signal.square(2 * np.pi * carrier_freq * time_vector_one_pulse)
-    # if biphasic:
-    #     sq_signal = -signal.square(2 * amplitude * np.pi * freq * time_vector)
-    # else:
-    #     sq_signal = signal.square(2 * amplitude * np.pi * (freq/2.) * time_vector)
     if not biphasic:
         # convert -ve values to 0
         sq_signal = np.maximum(sq_signal, 0)
 
     # print(f"Frequency: {carrier_freq*1e3} kHz, Burst freq: {1/burst_freq} Hz, Burst width: {burst_width} ms, Time res: {time_step} ms, Total stim dur: {total_stim_dur} ms, Amplitude: {amplitude}, Biphasic: {biphasic}")
-    if carrier_freq == 1.0*1e-3 and biphasic:
+    # if there is no carrier frequency, then the pulse is just a square wave of amplitude and duration burst_width
+    if carrier_freq == 0 and biphasic:
         # print("Warning: freq is 1 Hz and biphasic is True, setting biphasic to False")
         # split into two halves of +ve and -ve amplitude
         half_index = len(sq_signal) // 2
@@ -199,7 +196,11 @@ def create_cont_stim_waveform(
         sq_signal[half_index:] = -amplitude
 
     # get silece period and concatenate it to the pulse
-    burst_period = 1 / burst_freq
+    # if burst_freq == 0, then the burst period is equal to the total stim duration: only one burst will be generated
+    if burst_freq == 0:
+        burst_period = total_stim_dur
+    else:
+        burst_period = 1 / burst_freq
     post_silence_period = burst_period - burst_width
     post_silence_vector = np.arange(0, post_silence_period, time_step)
     post_silence = np.zeros((len(post_silence_vector)))
@@ -274,11 +275,14 @@ def create_multiple_pulses_waveform(
             pulse_y[start_index:end_index] = amp
     return pulse_x, pulse_y
 
-def interpolate_3d(field_dict, interpolation_points):
-    interp = RegularGridInterpolator(
-        (field_dict["x"], field_dict["y"], field_dict["z"]), field_dict["field_values"]
-    )
-    return interp(interpolation_points)
+def interpolate_3d(field_dicts, interpolation_points):
+    interp_list = []
+    for field_dict in field_dicts:
+        interp = RegularGridInterpolator(
+            (field_dict["x"], field_dict["y"], field_dict["z"]), field_dict["field_values"]
+        )
+        interp_list.append(interp(interpolation_points))
+    return interp_list
 
 def get_arcline_length(line_points, return_length_per_point=False):
     """Calculate the length of an arc line defined by a list of points"""

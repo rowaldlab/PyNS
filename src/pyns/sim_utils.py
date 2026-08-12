@@ -240,7 +240,7 @@ def discretize_and_interpolate_v_fiber(
         axon_info,
         model_type,
         tuned_flag,
-        field_dict,
+        field_dicts,
         paramfit_method="continuous",
         motoneuron=False,
         unmyelinated_model="sundt",
@@ -270,7 +270,7 @@ def discretize_and_interpolate_v_fiber(
                 model=unmyelinated_model,
             )
         # interpolate voltages
-        axon_obj.interpolate_v_on_sections(field_dict)
+        axon_obj.interpolate_v_on_sections(field_dicts)
         axon_obj_dict = axon_obj.to_dict()
 
         if motoneuron:
@@ -281,9 +281,9 @@ def discretize_and_interpolate_v_fiber(
             initseg_coord = np.copy(axon_obj.segments_midpoints)[-1, :] + direction*((initseg_l/2) + node_length/2)
             soma_coord = initseg_coord + direction*(initseg_l/2 + soma_l/2)
             mn_coords = np.concatenate((initseg_coord, soma_coord))
-            extSegPot_mn = interpolate_3d(field_dict, mn_coords)
-            axon_obj_dict["mn_initseg_v"] = extSegPot_mn[0]
-            axon_obj_dict["mn_soma_v"] = extSegPot_mn[1]
+            extSegPot_mn_list = interpolate_3d(field_dicts, mn_coords)
+            axon_obj_dict["mn_initseg_v"] = [extSegPot_mn[0] for extSegPot_mn in extSegPot_mn_list]
+            axon_obj_dict["mn_soma_v"] = [extSegPot_mn[1] for extSegPot_mn in extSegPot_mn_list]
             axon_obj_dict["mn_initseg_coord"] = initseg_coord
             axon_obj_dict["mn_soma_coord"] = soma_coord
 
@@ -306,7 +306,7 @@ def discretize_and_interpolate_v_fiber(
 
 def discretize_and_interpolate_v(
         fibers_list,
-        field_dict,
+        field_dicts,
         model_type="Gaines",
         tuned_flag=False,
         paramfit_method="continuous",
@@ -320,7 +320,7 @@ def discretize_and_interpolate_v(
             axon_info=axon_info,
             model_type=model_type,
             tuned_flag=tuned_flag,
-            field_dict=field_dict,
+            field_dicts=field_dicts,
             paramfit_method=paramfit_method,
             motoneuron=motoneuron,
             unmyelinated_model=unmyelinated_model,
@@ -334,8 +334,8 @@ def discretize_and_interpolate_v(
 
 def simulate_axon(
         axon_obj_dict,
-        stim_pulse,
-        stim_factor=1.0,
+        stim_pulses,
+        stim_factors=[1.0],
         passive_end_nodes=False,
         prepassive_nodes_as_endnodes=False,
         debug=False,
@@ -381,7 +381,7 @@ def simulate_axon(
         try:
             if debug:
                 print(
-                    f"\t\t\tSimulating axon: {axon_obj.name} with stim factor: {stim_factor}",
+                    f"\t\t\tSimulating axon: {axon_obj.name} with stim factors: {stim_factors}",
                     flush=True,
                 )
             if axon_obj_dict["fiberD"] > 1:
@@ -405,6 +405,7 @@ def simulate_axon(
                     )
             axon_obj.assign_v_ext()
 
+            mn = None
             if motoneuron:
                 if debug:
                     print(f"\t\t\tCreating motoneuron for axon: {axon_obj.name}", flush=True)
@@ -474,8 +475,8 @@ def simulate_axon(
                 stim_factor = 0.0
             if axon_obj_dict["fiberD"] > 1:
                 axon_res = axon_obj.run_simulation(
-                    stim_factor=stim_factor,
-                    stim_pulse=stim_pulse,
+                    stim_factors=stim_factors,
+                    stim_pulses=stim_pulses,
                     dt=time_step,
                     tstop=sim_dur,
                     return_only_spiking=return_only_spiking,
@@ -484,11 +485,12 @@ def simulate_axon(
                     delete_hoc_objects=True,
                     init_hoc_path=init_hoc_path,
                     min_n_spikes_per_node=n_req_spikes,
+                    motoneuron=mn
                 )
             else:
                 axon_res = axon_obj.run_simulation(
-                    stim_factor=stim_factor,
-                    stim_pulse=stim_pulse,
+                    stim_factors=stim_factors,
+                    stim_pulses=stim_pulses,
                     dt=time_step,
                     tstop=sim_dur,
                     return_only_spiking=return_only_spiking,
@@ -576,7 +578,7 @@ def simulate_axon(
 def simulate_axons(
     axons_sub_list,
     stim_t,
-    stim_pulse,
+    stim_pulses,
     stim_factor_step=1.0,
     initial_stim_factor=1.0,
     max_stim_factor=300.0,
@@ -617,12 +619,19 @@ def simulate_axons(
         }
         for axon_info in axons_sub_list
     }
-    t_last_nonzero_in_pulse = stim_t[np.argwhere(stim_pulse != 0)[-1][0]]
-    for stim_amp_i, stim_amp in enumerate(stim_amplitudes):
-        stim_amp = np.round(stim_amp, 2)
+    t_last_nonzero_in_pulse = np.max([stim_t[np.argwhere(stim_pulse != 0)[-1][0]] for stim_pulse in stim_pulses])
+
+    stim_amplitudes = stim_amplitudes.astype(np.float32)
+    # create combinations of stim_amplitudes for each stim_pulse
+    # create index combinations for each stim_pulse to loop over
+    index_combinations = np.array(np.meshgrid(*[np.arange(len(stim_amplitudes)) for _ in stim_pulses])).T.reshape(-1, len(stim_pulses))
+    stim_amplitudes_combinations = np.array([stim_amplitudes[indices] for indices in index_combinations])
+    # make them tuples to use as keys in the results dict
+    stim_amplitudes_combinations_tuples = [tuple(np.round(comb, 2)) for comb in stim_amplitudes_combinations]
+    for stim_amp_comb_i, stim_amp_comb in enumerate(stim_amplitudes_combinations_tuples):
         if rank == 0:
             t_start = time.perf_counter()
-            print(f"\t\tStarting simulation loop for stim factor {stim_amp} ({stim_amp_i+1}/{len(stim_amplitudes)})...", flush=True)
+            print(f"\t\tStarting simulation loop for stim factor {stim_amp_comb} ({stim_amp_comb_i+1}/{len(stim_amplitudes_combinations_tuples)})...", flush=True)
         
         record_v_default = record_v
         n_spiking_axons = 0
@@ -635,8 +644,8 @@ def simulate_axons(
                     record_v = True
             axon_res = simulate_axon(
                 axon_obj_dict=axon_obj_dict,
-                stim_pulse=stim_pulse,
-                stim_factor=stim_amp,
+                stim_pulses=stim_pulses,
+                stim_factors=stim_amp_comb,
                 passive_end_nodes=passive_end_nodes,
                 prepassive_nodes_as_endnodes=prepassive_nodes_as_endnodes,
                 debug=debug,
@@ -655,6 +664,10 @@ def simulate_axons(
                 output_dir=output_dir,
                 plot_axon_vm=plot_axon_vm_flag,
             )
+            stim_amp_dict_key = stim_amp_comb
+            if len(stim_amp_dict_key) == 1:
+                # if only one stim amplitude, use the value instead of a tuple for indexing the dict
+                stim_amp_dict_key = stim_amp_dict_key[0]
             if not "spikes_list" in list(axon_res.values())[0]:
                 if "spike" in list(axon_res.values())[0]:
                     n_spiking_axons += 1
@@ -666,7 +679,7 @@ def simulate_axons(
                     # For efferents, save only classified responses
                     try:
                         # axons_results[list(axon_res.keys())[0]]["results"][stim_amp]["MN"] = list(axon_res.values())[0]["MN"]
-                        axons_results[list(axon_res.keys())[0]]["results"][stim_amp]["responses_classified"] = classify_responses(list(axon_res.values())[0], last_t_in_pulse=t_last_nonzero_in_pulse, sim_dur=sim_dur)
+                        axons_results[list(axon_res.keys())[0]]["results"][stim_amp_dict_key]["responses_classified"] = classify_responses(list(axon_res.values())[0], last_t_in_pulse=t_last_nonzero_in_pulse, sim_dur=sim_dur)
                     except Exception as e:
                         print(
                             f"!!! [ERROR] !!! Could not classify responses for axon: {list(axon_res.keys())[0]}",
@@ -676,24 +689,24 @@ def simulate_axons(
                         print(f"\t!!!   Traceback: {traceback.format_exc()}", flush=True)
                 else:
                     # For afferent fibers, only save AP times at last node and AP init sites
-                    axons_results[list(axon_res.keys())[0]]["results"][stim_amp] = {
+                    axons_results[list(axon_res.keys())[0]]["results"][stim_amp_dict_key] = {
                         "AP_times": {"AP_times_last_node": list(axon_res.values())[0]['AP_times']['AP_times_last_node']},
                         "AP_init_sites": get_ap_init_nodes(list(axon_res.values())[0], reference="last", default_cond_v=67.8),
                     }
             else:
-                axons_results[list(axon_res.keys())[0]]["results"][stim_amp] = {
+                axons_results[list(axon_res.keys())[0]]["results"][stim_amp_dict_key] = {
                     "AP_times": list(axon_res.values())[0]['AP_times'],
                 }
                 if record_v:
-                    axons_results[list(axon_res.keys())[0]]["results"][stim_amp]["t"] = list(axon_res.values())[0]['time_vector']
-                    axons_results[list(axon_res.keys())[0]]["results"][stim_amp]["membrane_potential"] = list(axon_res.values())[0]['membrane_potential']
+                    axons_results[list(axon_res.keys())[0]]["results"][stim_amp_dict_key]["t"] = list(axon_res.values())[0]['time_vector']
+                    axons_results[list(axon_res.keys())[0]]["results"][stim_amp_dict_key]["membrane_potential"] = list(axon_res.values())[0]['membrane_potential']
                 if motoneuron:
-                    axons_results[list(axon_res.keys())[0]]["results"][stim_amp]["MN"] = list(axon_res.values())[0]["MN"]
-                    axons_results[list(axon_res.keys())[0]]["results"][stim_amp]["responses_classified"] = classify_responses(list(axon_res.values())[0], last_t_in_pulse=t_last_nonzero_in_pulse, sim_dur=sim_dur)
+                    axons_results[list(axon_res.keys())[0]]["results"][stim_amp_dict_key]["MN"] = list(axon_res.values())[0]["MN"]
+                    axons_results[list(axon_res.keys())[0]]["results"][stim_amp_dict_key]["responses_classified"] = classify_responses(list(axon_res.values())[0], last_t_in_pulse=t_last_nonzero_in_pulse, sim_dur=sim_dur)
                 else:
-                    axons_results[list(axon_res.keys())[0]]["results"][stim_amp]["AP_init_sites"] = get_ap_init_nodes(list(axon_res.values())[0], reference="last", default_cond_v=67.8)
+                    axons_results[list(axon_res.keys())[0]]["results"][stim_amp_dict_key]["AP_init_sites"] = get_ap_init_nodes(list(axon_res.values())[0], reference="last", default_cond_v=67.8)
 
-        # axons_with_spikes = [k for k, v in axons_results.items() if len(v["results"][stim_amp]['APs']) > 0]
+        # axons_with_spikes = [k for k, v in axons_results.items() if len(v["results"][stim_amp_dict_key]['APs']) > 0]
         if rank == 0:
             t_end = time.perf_counter()
             print(f"\t\tRank 0:")

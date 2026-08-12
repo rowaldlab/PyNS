@@ -28,7 +28,7 @@ class BaseConfig:
         pkg_dir = get_package_data_dir()
         
         # File paths (using absolute paths from package directory)
-        self.field_path = os.path.join(pkg_dir, "test_dataset", "lumbar-tSCS_cathode_T11-T12_anode_navel-sides_units_V_m_cropped.h5")
+        self.field_path = [os.path.join(pkg_dir, "test_dataset", "lumbar-tSCS_cathode_T11-T12_anode_navel-sides_units_V_m_cropped.h5")]
         self.axons_path = os.path.join(pkg_dir, "test_dataset", "RightSoleusAxons_diams_from_Schalow1992_cropped.npy")
         self.init_hoc_path = os.path.join(pkg_dir, "init_diff_v.hoc")
         self.results_dir = os.path.join(os.getcwd(), "results")
@@ -61,8 +61,8 @@ class BaseConfig:
         self.pulse_width = 2.0
         # Continuous stimulation parameters
         self.cont_stim_waveform = False
-        self.cont_stim_freq = 40.0
-        self.cont_stim_carrier_freq = 10000.0
+        self.cont_stim_freq = 0.0
+        self.cont_stim_carrier_freq = 0.0
         
         # Model parameters
         self.model_variant = "Alashqar"  # Options: "Alashqar", "Gaines", "MRG"
@@ -182,25 +182,52 @@ class BaseConfig:
             errors['time_step'] = msg
         
         # sim_dur must be positive
-        if self.sim_dur <= 0:
-            msg = "sim_dur must be positive!"
-            if raise_errors:
-                raise ValueError(msg)
-            errors['sim_dur'] = msg
+        # sim_dur can be a list for multiple field files, so we check each value if it's a list
+        if isinstance(self.sim_dur, list):
+            for i, dur in enumerate(self.sim_dur):
+                if dur <= 0:
+                    msg = f"sim_dur[{i}] must be positive!"
+                    if raise_errors:
+                        raise ValueError(msg)
+                    errors[f'sim_dur[{i}]'] = msg
+        else:
+            if self.sim_dur <= 0:
+                msg = "sim_dur must be positive!"
+                if raise_errors:
+                    raise ValueError(msg)
+                errors['sim_dur'] = msg
         
         # pulse_shape must be 'biphasic' or 'monophasic'
-        if self.pulse_shape not in ["biphasic", "monophasic"]:
-            msg = f"Invalid pulse_shape: {self.pulse_shape}. Accepted: 'biphasic', 'monophasic'"
-            if raise_errors:
-                raise ValueError(msg)
-            errors['pulse_shape'] = msg
+        # pulse_shape can be a list for multiple field files, so we check each value if it's a list
+        if isinstance(self.pulse_shape, list):
+            for i, shape in enumerate(self.pulse_shape):
+                if shape not in ["biphasic", "monophasic"]:
+                    msg = f"Invalid pulse_shape[{i}]: {shape}. Accepted: 'biphasic', 'monophasic'"
+                    if raise_errors:
+                        raise ValueError(msg)
+                    errors[f'pulse_shape[{i}]'] = msg
+        else:
+            if self.pulse_shape not in ["biphasic", "monophasic"]:
+                msg = f"Invalid pulse_shape: {self.pulse_shape}. Accepted: 'biphasic', 'monophasic'"
+                if raise_errors:
+                    raise ValueError(msg)
+                errors['pulse_shape'] = msg
         
         # pulse_width must be positive
-        if self.pulse_width <= 0:
-            msg = "pulse_width must be positive!"
-            if raise_errors:
-                raise ValueError(msg)
-            errors['pulse_width'] = msg
+        # pulse_width can be a list for multiple field files, so we check each value if it's a list
+        if isinstance(self.pulse_width, list):
+            for i, width in enumerate(self.pulse_width):
+                if width <= 0:
+                    msg = f"pulse_width[{i}] must be positive!"
+                    if raise_errors:
+                        raise ValueError(msg)
+                    errors[f'pulse_width[{i}]'] = msg
+        else:
+            if self.pulse_width <= 0:
+                msg = "pulse_width must be positive!"
+                if raise_errors:
+                    raise ValueError(msg)
+                errors['pulse_width'] = msg
         
         # model_variant must be valid
         if self.model_variant.lower() not in ["alashqar", "gaines", "mrg"]:

@@ -55,23 +55,23 @@ class Axon(object):
         """Setup recorders for the axon model in NEURON"""
         pass
 
-    def interpolate_v_on_sections(self, field_dict=None):
+    def interpolate_v_on_sections(self, field_dicts=None):
         """Interpolate the extracellular voltage on the axon sections"""
         xyz_all_segs = np.copy(self.segments_midpoints)
-        if field_dict is not None:
-            self.sections_ext_v = interpolate_3d(field_dict, xyz_all_segs)
+        if field_dicts is not None:
+            self.sections_ext_v = interpolate_3d(field_dicts, xyz_all_segs)
         else:
-            print("\t\t!!! WARNING: No field_dict is provided. Assigning zeros to v_ext of all sections!!!")
-            self.sections_ext_v = np.zeros(len(xyz_all_segs))
+            print("\t\t!!! WARNING: No field_dicts is provided. Assigning zeros to v_ext of all sections!!!")
+            self.sections_ext_v = [np.zeros(len(xyz_all_segs))]
 
-    def assign_v_ext(self, field_dict=None):
+    def assign_v_ext(self, field_dicts=None):
         """Assign extracellular voltage to the axon sections"""
         if len(self.sections_ext_v) == 0:
-            self.interpolate_v_on_sections(field_dict)
+            self.interpolate_v_on_sections(field_dicts)
 
-        # assuming voltage is in V, convert V to mV and multiply by 1e-6 to get value in MegaOhm considering a current of 1mA (see xtra.mod)
-        for seg_i, seg_ext_v in enumerate(self.sections_ext_v):
-            self.sections_list[seg_i].rx_xtra = seg_ext_v * 1e3 * 1e-6
+        # # assuming voltage is in V, convert V to mV and multiply by 1e-6 to get value in MegaOhm considering a current of 1mA (see xtra.mod)
+        # for seg_i, seg_ext_v_list in enumerate(self.sections_ext_v):
+        #     self.sections_rx[seg_i] = [seg_ext_v * 1e3 * 1e-6 for seg_ext_v in seg_ext_v_list]
 
     def run_simulation(self):
         """Run the simulation for the axon model in NEURON"""
@@ -333,6 +333,7 @@ class UnmyelinatedAxon(Axon):
         self.sections_list = []
         self.branches_list = []
 
+        self.sections_rx = []
         # Physical constants
         R = 8314  # Gas constant
         F = 96500  # Faraday constant
@@ -504,23 +505,22 @@ class UnmyelinatedAxon(Axon):
             if mod_params is not None:
                 for param, value in mod_params.items():
                     if hasattr(sec, param):
-                        # if sec_i == 0:
-                            # print(f"Setting {param} to {value} in section {sec_i}", flush=True)
                         setattr(sec, param, value)
                     else:
                         print(f"Warning: Section does not have parameter {param}", flush=True)
             sec.insert('extracellular')
-            sec.insert('xtra')
+            # sec.insert('xtra')
             sec.xg[0] = 1e10
             sec.xc[0] = 0
-            h.setpointer(sec(0.5)._ref_i_membrane, 'im', sec(0.5).xtra)
-            h.setpointer(sec(0.5)._ref_e_extracellular, 'ex', sec(0.5).xtra)
+            # h.setpointer(sec(0.5)._ref_i_membrane, 'im', sec(0.5).xtra)
+            # h.setpointer(sec(0.5)._ref_e_extracellular, 'ex', sec(0.5).xtra)
             # for seg in sec:
             #     h.setpointer(seg._ref_i_membrane, 'im', seg.xtra)
             #     h.setpointer(seg._ref_e_extracellular, 'ex', seg.xtra)
             if sec_i > 0:
                 sec.connect(self.sections_list[sec_i-1](1), 0)
             self.sections_list.append(sec)
+
 
     def setup_recorders(self, dt=0.005, record_v=False, thresh=-20, recorded_v_secs=None, recorded_ap_times_secs=None):
         # delete old recorders first
@@ -541,8 +541,8 @@ class UnmyelinatedAxon(Axon):
 
     def run_simulation(
             self,
-            stim_factor,
-            stim_pulse,
+            stim_factors,
+            stim_pulses,
             dt=0.005,
             tstop=5.0,
             verbose=False,
@@ -557,9 +557,16 @@ class UnmyelinatedAxon(Axon):
         # integrator
         h.cvode_active(0)
 
-        # Initialize stimulation vector
-        svec = h.Vector(stim_factor*stim_pulse)
-        svec.play(h._ref_is_xtra, h.dt)
+        self.v_ext_vectors = []
+        for sec_i, sec in enumerate(self.sections_list):
+            seg_v_ext_total = 0
+            for stim_factor, stim_pulse, segs_v_ext in zip(stim_factors, stim_pulses, self.sections_ext_v):
+                seg_v_ext = segs_v_ext[sec_i]
+                seg_v_ext_total += stim_factor * stim_pulse * seg_v_ext * 1e3 # mV
+            svec = h.Vector(seg_v_ext_total)
+            self.v_ext_vectors.append(svec)
+            for seg in sec:
+                svec.play(seg._ref_e_extracellular, h.dt)
 
         h.finitialize()
         h.fcurrent()
@@ -590,8 +597,6 @@ class UnmyelinatedAxon(Axon):
         max_n_spikes_per_sec = 0
 
         spike_times_recs = [k for k in self.recorders.keys() if "times" in k]
-        # for k in spike_times_recs:
-            # print(f"k: {k}, n spikes: {self.recorders[k]}", flush=True)
         spike_times_recorders = {k: np.array(self.recorders[k]) if self.recorders[k] is not None and len(self.recorders[k]) > 0 else np.array([]) for k in spike_times_recs}
         axon_results.update({"AP_times": spike_times_recorders})
         spk_times_earliest = {k: np.min(v) if len(v) > 0 else np.inf for k, v in spike_times_recorders.items()}
@@ -599,12 +604,17 @@ class UnmyelinatedAxon(Axon):
         earliest_t_ind = np.argmin(list(spk_times_earliest.values()))
         earliest_sec_name = sec_names[earliest_t_ind]
         earliest_spike_time = spk_times_earliest[f"spk_times_{earliest_sec_name}"]
+        stim_factor_key = "stim_factors"
+        if len(stim_factors) == 1:
+            stim_factors = stim_factors[0]
+            stim_factor_key = "stim_factor"
+
         if earliest_spike_time != np.inf:
             spike = {
                 "earliest_spike_time": earliest_spike_time,
                 "earliest_spiking_section": earliest_sec_name,
                 "spike_sec_idx": int(earliest_sec_name.split("_")[-1]),
-                "stim_factor": stim_factor,
+                stim_factor_key: stim_factors,
             }
             axon_results.update({"spike": spike})
             max_n_spikes_per_sec = np.max([self.recorders[f"spk_{sec_name}"].n for sec_name in sec_names])
@@ -731,7 +741,6 @@ class MyelinatedAxon(Axon):
             params_dict = {"g": None}
             for param_name, (slope, intercept) in small_fiber_diam_fits.items():
                 params_dict[param_name] = slope * fiber_diam + intercept
-                # print(f"{param_name}: {params_dict[param_name]}")
             if self.axon_inner_diameter is not None:
                 # use myelin_thickness_fits to get paraD1, paraD2, and nl
                 myelin_thickness = (fiber_diam - self.axon_inner_diameter)/2
@@ -1046,7 +1055,7 @@ class MyelinatedAxon(Axon):
                         for param, value in mod_params_node.items():
                             setattr(sec, param, value)
                 sec.insert('extracellular')
-                sec.insert('xtra')
+                # sec.insert('xtra')
                 sec.xraxial[0] = Rpn0
                 sec.xg[0] = 1e10
                 sec.xc[0] = 0
@@ -1068,7 +1077,7 @@ class MyelinatedAxon(Axon):
                         sec.g_pas = 0.001 * self.paraD1 / self.fiberD
                         sec.e_pas = self.v_init
                 sec.insert('extracellular')
-                sec.insert('xtra')
+                # sec.insert('xtra')
                 sec.xraxial[0] = Rpn1
                 sec.xg[0] = mygm / (self.nl * 2)
                 sec.xc[0] = mycm / (self.nl * 2)
@@ -1090,7 +1099,7 @@ class MyelinatedAxon(Axon):
                     sec.g_pas = 0.0001 * self.paraD2 / self.fiberD
                     sec.e_pas = self.v_init
                 sec.insert('extracellular')
-                sec.insert('xtra')
+                # sec.insert('xtra')
                 sec.xraxial[0] = Rpn2
                 sec.xg[0] = mygm / (self.nl * 2)
                 sec.xc[0] = mycm / (self.nl * 2)
@@ -1112,15 +1121,13 @@ class MyelinatedAxon(Axon):
                     sec.g_pas = 0.0001 * self.axonD / self.fiberD
                     sec.e_pas = self.v_init
                 sec.insert('extracellular')
-                sec.insert('xtra')
+                # sec.insert('xtra')
                 sec.xraxial[0] = Rpx
                 sec.xg[0] = mygm / (self.nl * 2)
                 sec.xc[0] = mycm / (self.nl * 2)
                 stin_i += 1
             else:
                 raise ValueError(f"Unknown segment type: {sec_type}")
-            h.setpointer(sec(0.5)._ref_i_membrane, 'im', sec(0.5).xtra)
-            h.setpointer(sec(0.5)._ref_e_extracellular, 'ex', sec(0.5).xtra)
             if sec_i > 0:
                 sec.connect(self.sections_list[sec_i-1](1), 0)
             self.sections_list.append(sec)
@@ -1169,26 +1176,22 @@ class MyelinatedAxon(Axon):
                     self.recorders[f"{variable_name}_node_{ni}"] = h.Vector()
                     exec(f"recs[f'{variable_name}_node_{ni}'].record(self.sections_list[node_i](0.5)._ref_{variable_name}_{self.node_name}, dt)")
 
-    def interpolate_v_on_sections(self, field_dict=None):
+    def interpolate_v_on_sections(self, field_dicts=None):
         xyz_all_segs = np.copy(self.segments_midpoints)
-        if field_dict is not None:
-            self.sections_ext_v = interpolate_3d(field_dict, xyz_all_segs)
+        if field_dicts is not None:
+            self.sections_ext_v = interpolate_3d(field_dicts, xyz_all_segs)
         else:
-            print("\t\t!!! WARNING: No field_dict is provided. Assigning zeros to v_ext of all sections!!!")
-            self.sections_ext_v = np.zeros(len(xyz_all_segs))
+            print("\t\t!!! WARNING: No field_dicts is provided. Assigning zeros to v_ext of all sections!!!")
+            self.sections_ext_v = [np.zeros(len(xyz_all_segs))]
 
-    def assign_v_ext(self, field_dict=None):
+    def assign_v_ext(self, field_dicts=None):
         if len(self.sections_ext_v) == 0:
-            self.interpolate_v_on_sections(field_dict)
-
-        # assuming voltage is in V, convert V to mV and multiply by 1e-6 to get value in MegaOhm considering a current of 1mA (see xtra.mod)
-        for seg_i, seg_ext_v in enumerate(self.sections_ext_v):
-            self.sections_list[seg_i].rx_xtra = seg_ext_v * 1e3 * 1e-6
+            self.interpolate_v_on_sections(field_dicts)
 
     def run_simulation(
             self,
-            stim_factor,
-            stim_pulse,
+            stim_factors,
+            stim_pulses,
             dt=0.005,
             tstop=5.0,
             verbose=False,
@@ -1200,6 +1203,7 @@ class MyelinatedAxon(Axon):
             delete_hoc_objects=True,
             init_hoc_path=None,
             intracellular_stims=None,
+            motoneuron=None,
             ):
         h.celsius = self.temp_c
         h.dt = dt
@@ -1235,9 +1239,37 @@ class MyelinatedAxon(Axon):
                 if verbose:
                     print(f"\tInjecting {intracellular_stim['amp']} nA in node {intracellular_stim['node']} (section {stim_sec.name()}) for {intracellular_stim['dur']} ms starting at {intracellular_stim['delay']} ms")
 
-        # Initialize stimulation vector
-        svec = h.Vector(stim_factor*stim_pulse)
-        svec.play(h._ref_is_xtra, h.dt)
+        # Initialize stimulation vector (stim_factor * stim_pulse for multiple fields)
+        self.v_ext_vectors = []
+        for sec_i, sec in enumerate(self.sections_list):
+            seg_v_ext_total = 0
+            for stim_factor, stim_pulse, segs_v_ext in zip(stim_factors, stim_pulses, self.sections_ext_v):
+                seg_v_ext = segs_v_ext[sec_i]
+                seg_v_ext_total += stim_factor * stim_pulse * seg_v_ext * 1e3 # mV
+            svec = h.Vector(seg_v_ext_total)
+            self.v_ext_vectors.append(svec)
+            for seg in self.sections_list[sec_i]:
+                svec.play(seg._ref_e_extracellular, h.dt)
+        # do the same for the motoneuron if provided
+        if motoneuron is not None:
+            soma_v_ext_total = 0
+            initSeg_v_ext_total = 0
+            for stim_factor, stim_pulse, soma_v_ext, initSeg_v_ext in zip(stim_factors, stim_pulses, motoneuron.v_ext_soma_list, motoneuron.v_ext_initseg_list):
+                soma_v_ext_total += stim_factor * stim_pulse * soma_v_ext * 1e3 # mV
+                initSeg_v_ext_total += stim_factor * stim_pulse * initSeg_v_ext * 1e3 # mV
+            soma_svec = h.Vector(soma_v_ext_total)
+            self.v_ext_vectors.append(soma_svec)
+            for seg in motoneuron.soma:
+                soma_svec.play(seg._ref_e_extracellular, h.dt)
+            initSeg_svec = h.Vector(initSeg_v_ext_total)
+            self.v_ext_vectors.append(initSeg_svec)
+            for seg in motoneuron.initSegment:
+                initSeg_svec.play(seg._ref_e_extracellular, h.dt)
+
+        stim_factor_key = "stim_factors"
+        if len(stim_factors) == 1:
+            stim_factors = stim_factors[0]
+            stim_factor_key = "stim_factor"
 
         # Initialize simulation
         if init_hoc_path is not None:
@@ -1309,7 +1341,7 @@ class MyelinatedAxon(Axon):
                     "spike_at_node": node_idx_earliest_spike,
                     "spike_seg_idx": spike_seg_idx,
                     "spike_time": spike_time_earliest_spike,
-                    "stim_factor": stim_factor,
+                    stim_factor_key: stim_factors,
                     "end_node": end_node_check,
                     "axon_had_end_node": end_node_check,
                 }
@@ -1319,7 +1351,7 @@ class MyelinatedAxon(Axon):
                     "spike_at_node": node_idx_earliest_spike,
                     "spike_seg_idx": spike_seg_idx,
                     "spike_time": spike_time_earliest_spike,
-                    "stim_factor": stim_factor,
+                    stim_factor_key: stim_factors,
                     "end_node": end_node_check,
                 }
             )
@@ -1338,7 +1370,6 @@ class MyelinatedAxon(Axon):
                         and spike_times_diff[zc] != 0
                     ]
                 )
-                # print(f"Zero crossings: {zero_crossings}")
                 if len(zero_crossings) > 0:
                     # get the node with the earliest spike
                     if max(zero_crossings + 1) < len(spiking_nodes):
@@ -1369,7 +1400,7 @@ class MyelinatedAxon(Axon):
                                             "spike_at_node": spike_node_zc,
                                             "spike_seg_idx": spike_seg_idx,
                                             "spike_time": spike_time_zc,
-                                            "stim_factor": stim_factor,
+                                            stim_factor_key: stim_factors,
                                             "end_node": False,
                                         }
                                     )
@@ -1383,7 +1414,7 @@ class MyelinatedAxon(Axon):
                                     "spike_at_node": node_idx_earliest_spike,
                                     "spike_seg_idx": spike_seg_idx,
                                     "spike_time": spike_time_earliest_spike,
-                                    "stim_factor": stim_factor,
+                                    stim_factor_key: stim_factors,
                                     "end_node": False,
                                     "axon_had_end_node": end_node_check,
                                 }
@@ -1414,7 +1445,6 @@ class MyelinatedAxon(Axon):
             self.delete_recorders()
 
         if not "spike" in axon_results and return_only_spiking:
-            # print("FINISHED SIM ONE AXON! NO SPIKE!")
             return {}
         elif return_only_spiking:
             # check number of spikes per node
@@ -1509,13 +1539,13 @@ class Motoneuron:
         self.soma.insert('motoneuron') # Insert the Neuron motoneuron mechanism developed by McIntyre 2002
         # if self._drug: self.soma.gcak_motoneuron *= 0.6 # Add the drug effect as in Booth et al 1997
         self.soma.insert('extracellular')
-        self.soma.insert('xtra')
+        # self.soma.insert('xtra')
         self.soma.xraxial[0] = Rpn_soma
         self.soma.xg[0] = 1e10
         self.soma.xc[0] = 0
-        for seg in self.soma:
-            h.setpointer(seg._ref_i_membrane, 'im', seg.xtra)
-            h.setpointer(seg._ref_e_extracellular, 'ex', seg.xtra)
+        # for seg in self.soma:
+        #     h.setpointer(seg._ref_i_membrane, 'im', seg.xtra)
+        #     h.setpointer(seg._ref_e_extracellular, 'ex', seg.xtra)
         
         self.initSegment.nseg = 5
         self.initSegment.L = self.initseg_length
@@ -1525,13 +1555,13 @@ class Motoneuron:
         self.initSegment.Ra = 200
         self.initSegment.cm = 2
         self.initSegment.insert('extracellular')
-        self.initSegment.insert('xtra')
+        # self.initSegment.insert('xtra')
         self.soma.xraxial[0] = Rpn_initseg
         self.initSegment.xg[0] = 1e10
         self.initSegment.xc[0] = 0
-        for seg in self.initSegment:
-            h.setpointer(seg._ref_i_membrane, 'im', seg.xtra)
-            h.setpointer(seg._ref_e_extracellular, 'ex', seg.xtra)
+        # for seg in self.initSegment:
+        #     h.setpointer(seg._ref_i_membrane, 'im', seg.xtra)
+        #     h.setpointer(seg._ref_e_extracellular, 'ex', seg.xtra)
 
     def _build_topology(self):
         """ Connect the sections together. """
@@ -1543,21 +1573,21 @@ class Motoneuron:
         self.soma_coord = soma_coord
         self.initseg_coord = initseg_coord
 
-    def assign_v_ext(self, v_ext_soma=None, v_ext_initseg=None, field_dict=None):
+    def assign_v_ext(self, v_ext_soma=None, v_ext_initseg=None, field_dicts=None):
         """ Assign the external voltage to the soma and initsegment sections. """
 
-        if (v_ext_soma is None or v_ext_initseg is None) and field_dict is None:
-            raise ValueError("Either v_ext_soma and v_ext_initseg or field_dict must be provided.")
-        elif (v_ext_soma is None or v_ext_initseg is None) and field_dict is not None:
+        if (v_ext_soma is None or v_ext_initseg is None) and field_dicts is None:
+            raise ValueError("Either v_ext_soma and v_ext_initseg or field_dicts must be provided.")
+        elif (v_ext_soma is None or v_ext_initseg is None) and field_dicts is not None:
             if self.soma_coord is None or self.initseg_coord is None:
-                raise ValueError("soma_coord and initseg_coord must be set before using field_dict.")
-            # interpolate the field_dict to get the external voltage at the soma and initsegment coordinates
+                raise ValueError("soma_coord and initseg_coord must be set before using field_dicts.")
+            # interpolate the field_dicts to get the external voltage at the soma and initsegment coordinates
             mn_coords = np.concatenate((self.initseg_coord, self.soma_coord))
-            extSegPot_mn = interpolate_3d(field_dict, mn_coords)
-            v_ext_initseg = extSegPot_mn[0]
-            v_ext_soma = extSegPot_mn[1]
-        self.soma.rx_xtra = v_ext_soma * 1e3 * 1e-6
-        self.initSegment.rx_xtra = v_ext_initseg * 1e3 * 1e-6
+            extSegPot_mn_list = interpolate_3d(field_dicts, mn_coords)
+            v_ext_initseg = [extSegPot_mn[0] for extSegPot_mn in extSegPot_mn_list]
+            v_ext_soma = [extSegPot_mn[1] for extSegPot_mn in extSegPot_mn_list]
+        self.v_ext_soma_list = v_ext_soma
+        self.v_ext_initseg_list = v_ext_initseg
 
     def create_synapse(self, type="excitatory", x=None, verbose=False):
         """ Create and return a synapse that links motoneuron state variables to external events.
