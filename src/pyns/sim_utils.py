@@ -405,6 +405,11 @@ def simulate_axon(
                     )
             axon_obj.assign_v_ext()
 
+            stim_amp_dict_key = stim_factors
+            if len(stim_amp_dict_key) == 1:
+                # if only one stim amplitude, use the value instead of a tuple for indexing the dict
+                stim_amp_dict_key = stim_amp_dict_key[0]
+            
             mn = None
             if motoneuron:
                 if debug:
@@ -463,7 +468,7 @@ def simulate_axon(
                     if axon_obj.name in efferent_fiber_names_sampled:
                         # get number of fibers from same traj_name and pos but all segments
                         projecting_axons = {axon_name: {
-                            'AP_init_sites': axon_res["results"][stim_factor]['AP_init_sites'],
+                            'AP_init_sites': axon_res["results"][stim_amp_dict_key]['AP_init_sites'],
                             'segment_midpoints' : axon_res["segment_midpoints"],
                         } for axon_name, axon_res in input_spikes.items() if axon_name in afferent_axon_names}
                         axon_input_spikes = get_ap_times_at_mn(projecting_axons, mn.soma_coord)
