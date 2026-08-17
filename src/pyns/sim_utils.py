@@ -613,19 +613,6 @@ def simulate_axons(
     
     if stim_amplitudes is None:
         stim_amplitudes = np.arange(initial_stim_factor, max_stim_factor, stim_factor_step)
-    axons_results = {
-        axon_info["name"]: {
-            "segment_types": axon_info["segments_types"] if "segments_types" in axon_info else None,
-            "segment_midpoints": axon_info["segments_midpoints"],
-            "diameter": axon_info["fiberD"],
-            "nnodes": axon_info["axonnodes"] if "axonnodes" in axon_info else None,
-            "results": {np.round(k, 2): {} for k in stim_amplitudes},
-            "connected_to_mn": motoneuron,
-        }
-        for axon_info in axons_sub_list
-    }
-    t_last_nonzero_in_pulse = np.max([stim_t[np.argwhere(stim_pulse != 0)[-1][0]] for stim_pulse in stim_pulses])
-
     stim_amplitudes = stim_amplitudes.astype(np.float32)
     # create combinations of stim_amplitudes for each stim_pulse
     # create index combinations for each stim_pulse to loop over
@@ -633,6 +620,24 @@ def simulate_axons(
     stim_amplitudes_combinations = np.array([stim_amplitudes[indices] for indices in index_combinations])
     # make them tuples to use as keys in the results dict
     stim_amplitudes_combinations_tuples = [tuple(np.round(comb, 2)) for comb in stim_amplitudes_combinations]
+    if len(stim_pulses) == 1:
+        results_dict_keys = [comb[0] for comb in stim_amplitudes_combinations_tuples]
+    else:
+        results_dict_keys = stim_amplitudes_combinations_tuples
+
+    axons_results = {
+        axon_info["name"]: {
+            "segment_types": axon_info["segments_types"] if "segments_types" in axon_info else None,
+            "segment_midpoints": axon_info["segments_midpoints"],
+            "diameter": axon_info["fiberD"],
+            "nnodes": axon_info["axonnodes"] if "axonnodes" in axon_info else None,
+            "results": {stim_amp_dict_key: {} for stim_amp_dict_key in results_dict_keys},
+            "connected_to_mn": motoneuron,
+        }
+        for axon_info in axons_sub_list
+    }
+    t_last_nonzero_in_pulse = np.max([stim_t[np.argwhere(stim_pulse != 0)[-1][0]] for stim_pulse in stim_pulses])
+
     for stim_amp_comb_i, stim_amp_comb in enumerate(stim_amplitudes_combinations_tuples):
         if rank == 0:
             t_start = time.perf_counter()
@@ -669,10 +674,7 @@ def simulate_axons(
                 output_dir=output_dir,
                 plot_axon_vm=plot_axon_vm_flag,
             )
-            stim_amp_dict_key = stim_amp_comb
-            if len(stim_amp_dict_key) == 1:
-                # if only one stim amplitude, use the value instead of a tuple for indexing the dict
-                stim_amp_dict_key = stim_amp_dict_key[0]
+            stim_amp_dict_key = results_dict_keys[stim_amp_comb_i]
             if not "spikes_list" in list(axon_res.values())[0]:
                 if "spike" in list(axon_res.values())[0]:
                     n_spiking_axons += 1
