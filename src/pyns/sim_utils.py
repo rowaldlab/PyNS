@@ -613,6 +613,9 @@ def simulate_axons(
     
     if stim_amplitudes is None:
         stim_amplitudes = np.arange(initial_stim_factor, max_stim_factor, stim_factor_step)
+    # if stim_amplitudes is a list, convert to numpy array
+    if isinstance(stim_amplitudes, list):
+        stim_amplitudes = np.array(stim_amplitudes)
     stim_amplitudes = stim_amplitudes.astype(np.float32)
     # create combinations of stim_amplitudes for each stim_pulse
     # create index combinations for each stim_pulse to loop over

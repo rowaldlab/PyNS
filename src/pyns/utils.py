@@ -14,6 +14,7 @@ https://www.pdh.med.fau.de/
 import os
 import numpy as np
 import pickle
+import h5py
 from scipy.interpolate import RegularGridInterpolator
 from scipy import signal
 import re
@@ -36,6 +37,18 @@ class DummyComm:
         return [data]
 
     def Barrier(self):
+        return None
+
+    def Split(self, color=0, key=0):
+        return self
+
+    def Split_type(self, split_type, key=0):
+        return self
+
+    def send(self, data, dest=0, tag=0):
+        return None
+
+    def recv(self, source=0, tag=0):
         return None
 
 
@@ -307,7 +320,7 @@ def filter_axon_trajectories(
     removed_axons_names_length = []
     removed_axons_names_range = []
     for axon_name, org_axon_points in axons_dict.items():
-        if axons_kws_any is not None:
+        if axons_kws_any:
             if not any([kw in axon_name for kw in axons_kws_any]):
                 continue
         # axon_points = np.load(axon_path)
@@ -321,111 +334,24 @@ def filter_axon_trajectories(
             & (axon_points[:, 2] > z_range[0])
             & (axon_points[:, 2] < z_range[1])
         )[:, 0]
-        if len(indices_to_keep) == len(axon_points):
+        if len(indices_to_keep) > 0:
             axon_points = axon_points[indices_to_keep]
             total_len = np.sum(np.linalg.norm(np.diff(axon_points, axis=0), axis=1))
             if total_len >= min_axon_length:
                 # axon_file_name = os.path.basename(axon_path)
                 diam_string = [
                     sub_string
-                    for s_i, sub_string in enumerate(axon_name.split("_"))
-                    if "um" in sub_string and axon_name.split("_")[s_i-1] == "diam"
-                ]
-                innerdiam_string = [
-                    sub_string
-                    for s_i, sub_string in enumerate(axon_name.split("_"))
-                    if "um" in sub_string and axon_name.split("_")[s_i-1] == "axondiam"
-                ]
-                if len(diam_string) == 0:
-                    diam = default_diam
-                else:
-                    diam = float(re.findall(r"[-+]?(?:\d*\.*\d+)", diam_string[0])[0])
-                if len(innerdiam_string) == 0:
-                    inner_diam = None
-                else:
-                    inner_diam = float(re.findall(r"[-+]?(?:\d*\.*\d+)", innerdiam_string[0])[0])
+                    for sub_string in axon_name.split("_")
+                    if "um" in sub_string
+                ][0]
                 # print("diam_string: ", diam_string)
-                # diam = float(re.findall(r"[-+]?(?:\d*\.*\d+)", diam_string)[0])
+                diam = float(re.findall(r"[-+]?(?:\d*\.*\d+)", diam_string)[0])
                 axon_name = axon_name.replace(".npy", "")
                 axon_dicts.append(
                     {
                         "points": axon_points,  # mm to um
                         "diam": diam,  # um
-                        "inner_diam": inner_diam,
                         "axon_name": axon_name,
-                        "length": total_len,
-                    }
-                )
-                lengths.append(total_len)
-            else:
-                removed_axons_names_length.append(axon_name)
-        elif len(indices_to_keep) > 0:
-            axon_traj_splits = []
-            traj_inds = []
-            last_ind = -1
-            # print(f"\t\t Traj: {axon_name} original length: {len(axon_points)}")
-            for ind in np.arange(axon_points.shape[0]):
-                if (
-                    axon_points[ind, 0] > x_range[0]
-                    and (axon_points[ind, 0] < x_range[1])
-                    and (axon_points[ind, 1] > y_range[0])
-                    and (axon_points[ind, 1] < y_range[1])
-                    and (axon_points[ind, 2] > z_range[0])
-                    and (axon_points[ind, 2] < z_range[1])
-                ):
-                    if last_ind == ind - 1 or last_ind == -1:
-                        traj_inds.append(ind)
-                        last_ind = ind
-                    else:
-                        axon_traj_splits.append(traj_inds.copy())
-                        traj_inds = []
-                        last_ind = -1
-                    if ind == len(axon_points) - 1 and len(traj_inds) > 0:
-                        axon_traj_splits.append(traj_inds.copy())
-                        traj_inds = []
-                        last_ind = -1
-                else:
-                    if len(traj_inds) > 0:
-                        axon_traj_splits.append(traj_inds.copy())
-                        traj_inds = []
-                        last_ind = -1
-            # print(f"\t\t\t Got {len(axon_traj_splits)} traj splits, with lengths {[len(traj) for traj in axon_traj_splits]}")
-            axon_points_inds = axon_traj_splits[
-                np.argmax(np.array([len(traj) for traj in axon_traj_splits]))
-            ]
-            axon_points = axon_points[np.array(axon_points_inds), :]
-            # print(f"\t\t\t LENGTH: {len(axon_points)}")
-            total_len = np.sum(np.linalg.norm(np.diff(axon_points, axis=0), axis=1))
-            if total_len >= min_axon_length:
-                # axon_file_name = os.path.basename(axon_path)
-                diam_string = [
-                    sub_string
-                    for s_i, sub_string in enumerate(axon_name.split("_"))
-                    if "um" in sub_string and axon_name.split("_")[s_i-1] == "diam"
-                ]
-                innerdiam_string = [
-                    sub_string
-                    for s_i, sub_string in enumerate(axon_name.split("_"))
-                    if "um" in sub_string and axon_name.split("_")[s_i-1] == "axondiam"
-                ]
-                if len(diam_string) == 0:
-                    diam = default_diam
-                else:
-                    diam = float(re.findall(r"[-+]?(?:\d*\.*\d+)", diam_string[0])[0])
-                if len(innerdiam_string) == 0:
-                    inner_diam = None
-                else:
-                    inner_diam = float(re.findall(r"[-+]?(?:\d*\.*\d+)", innerdiam_string[0])[0])
-                # print("diam_string: ", diam_string)
-                # diam = float(re.findall(r"[-+]?(?:\d*\.*\d+)", diam_string)[0])
-                axon_name = axon_name.replace(".npy", "")
-                axon_dicts.append(
-                    {
-                        "points": axon_points,  # mm to um
-                        "diam": diam,  # um
-                        "inner_diam": inner_diam,
-                        "axon_name": axon_name,
-                        "length": total_len,
                     }
                 )
                 lengths.append(total_len)
@@ -436,7 +362,6 @@ def filter_axon_trajectories(
     if lengths and rank == 0:
         print(f"\t\t Filtered axons minimum length: {np.min(lengths)}", flush=True)
         print(f"\t\t Filtered axons maximum length: {np.max(lengths)}", flush=True)
-    if rank == 0:
         print(
             f"\t\t List of axons excluded due to being out of field: {removed_axons_names_range}",
             flush=True,
@@ -461,3 +386,139 @@ def save_results(results_to_save, output_npy_path):
         pkl_path = output_npy_path.replace(".npy", ".pkl")
         with open(pkl_path, "wb") as f:
             pickle.dump(results_to_save, f, protocol=pickle.HIGHEST_PROTOCOL)
+
+
+def _dict_to_hdf5_group(group, d):
+    """Recursively write a (possibly nested) dict of arrays/scalars into an h5py group.
+
+    HDF5 group/dataset names must be strings, but dict keys here can be floats, tuples, etc.
+    (e.g. stim factors). To preserve the original key type, entries are stored under an
+    index-based name and the real key is pickled into a "__key__" attribute.
+    """
+    for idx, (key, val) in enumerate(d.items()):
+        name = f"item_{idx}"
+        key_blob = np.frombuffer(pickle.dumps(key, protocol=pickle.HIGHEST_PROTOCOL), dtype=np.uint8)
+        if isinstance(val, dict):
+            subgroup = group.create_group(name)
+            subgroup.attrs["__key__"] = key_blob
+            _dict_to_hdf5_group(subgroup, val)
+            continue
+        if val is None:
+            dset = group.create_dataset(name, data=np.zeros(1, dtype=np.uint8))
+            dset.attrs["__key__"] = key_blob
+            dset.attrs["__none__"] = True
+            continue
+        try:
+            arr = np.asarray(val)
+            if arr.dtype != object:
+                dset = group.create_dataset(name, data=arr, compression="gzip", compression_opts=4)
+                dset.attrs["__key__"] = key_blob
+                continue
+        except Exception:
+            pass
+        # fallback for arbitrary/irregular python objects that can't be stored as a plain array
+        blob = np.frombuffer(pickle.dumps(val, protocol=pickle.HIGHEST_PROTOCOL), dtype=np.uint8)
+        dset = group.create_dataset(name, data=blob)
+        dset.attrs["__key__"] = key_blob
+        dset.attrs["__pickled__"] = True
+
+
+def _hdf5_group_to_dict(group):
+    """Recursively read an h5py group back into a dict, restoring original key types."""
+    d = {}
+    for name, item in group.items():
+        if "__key__" in item.attrs:
+            key = pickle.loads(np.asarray(item.attrs["__key__"]).tobytes())
+        else:
+            key = name  # fallback for entries written without key metadata
+        if isinstance(item, h5py.Group):
+            d[key] = _hdf5_group_to_dict(item)
+        elif item.attrs.get("__none__", False):
+            d[key] = None
+        elif item.attrs.get("__pickled__", False):
+            d[key] = pickle.loads(item[()].tobytes())
+        else:
+            d[key] = item[()]
+    return d
+
+
+def save_results_hdf5(results_dict, filepath, group_name=None, mode="w"):
+    """Dump a (possibly nested) results dict to an HDF5 file, optionally under a named group.
+
+    Used for temporary per-process/per-node result dumps instead of `.npy`/pickle, since HDF5
+    supports compression and appending additional groups to an existing file (mode="a").
+    """
+    with h5py.File(filepath, mode) as f:
+        target = f.create_group(group_name) if group_name else f
+        _dict_to_hdf5_group(target, results_dict)
+
+
+def load_results_hdf5(filepath, group_name=None):
+    """Load a results dict previously written with `save_results_hdf5`."""
+    with h5py.File(filepath, "r") as f:
+        target = f[group_name] if group_name else f
+        return _hdf5_group_to_dict(target)
+
+
+def merge_distributed_results(local_results, comm, node_comm, local_rank, global_rank, results_dir_sim, tag, mpi_module=None, broadcast_to_all=False):
+    """Combine each rank's results dict while minimizing shared filesystem traffic.
+
+    Instead of every rank dumping/reloading one temp file each (O(size), or O(size^2) when every
+    rank also has to reload every other rank's file), this:
+      1. Combines all ranks on a node in-memory via `node_comm.gather` (no disk I/O).
+      2. Has only node leaders write to the shared filesystem, under results_dir_sim (one file per
+         node instead of per rank).
+      3. Throttles those writes with a token relay so leaders touch the shared filesystem one at
+         a time instead of all at once.
+    Only rank 0 reads the (few) per-node files back and merges them; the merged dict is broadcast
+    to all ranks only if `broadcast_to_all` is True. The temp files are removed afterward.
+    `mpi_module` should be the imported `mpi4py.MPI` module (or None when MPI is unavailable).
+    """
+    node_results_list = node_comm.gather(local_results, root=0)
+    node_results = {}
+    if local_rank == 0:
+        for res in node_results_list:
+            node_results.update(res)
+
+    is_leader = (local_rank == 0)
+    color = 0 if is_leader else (mpi_module.UNDEFINED if mpi_module is not None else None)
+    leader_comm = comm.Split(color, global_rank)
+
+    shared_tmp_dir = os.path.join(results_dir_sim, f"tmp_{tag}_results")
+    if is_leader:
+        os.makedirs(shared_tmp_dir, exist_ok=True)
+        leader_rank = leader_comm.Get_rank()
+        n_leaders = leader_comm.Get_size()
+        shared_file_path = os.path.join(shared_tmp_dir, f"results_{tag}_node{leader_rank}.h5")
+
+        # token relay: only one node leader touches the shared filesystem at a time
+        if leader_rank != 0:
+            leader_comm.recv(source=leader_rank - 1, tag=42)
+
+        save_results_hdf5(node_results, shared_file_path)
+
+        if leader_rank != n_leaders - 1:
+            leader_comm.send(True, dest=leader_rank + 1, tag=42)
+
+    comm.Barrier()
+
+    merged_results = None
+    if global_rank == 0:
+        merged_results = {}
+        for fname in sorted(os.listdir(shared_tmp_dir)):
+            if fname.startswith(f"results_{tag}_node") and fname.endswith(".h5"):
+                merged_results.update(load_results_hdf5(os.path.join(shared_tmp_dir, fname)))
+    if broadcast_to_all:
+        merged_results = comm.bcast(merged_results, root=0)
+
+    comm.Barrier()
+    if global_rank == 0:
+        for fname in os.listdir(shared_tmp_dir):
+            if fname.startswith(f"results_{tag}_node") and fname.endswith(".h5"):
+                os.remove(os.path.join(shared_tmp_dir, fname))
+        try:
+            os.rmdir(shared_tmp_dir)
+        except OSError:
+            pass
+
+    return merged_results

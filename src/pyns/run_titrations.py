@@ -32,6 +32,7 @@ from .utils import (
     filter_axon_trajectories,
     create_cont_stim_waveform,
     save_results,
+    merge_distributed_results,
     DummyComm,
 )
 from .axon_models import *
@@ -43,6 +44,10 @@ if __name__ == "__main__":
     comm = MPI.COMM_WORLD if MPI else DummyComm()
     rank = comm.Get_rank()
     size = comm.Get_size()
+
+    global_rank = comm.Get_rank()
+    node_comm = comm.Split_type(MPI.COMM_TYPE_SHARED)
+    local_rank = node_comm.Get_rank()
 
     config = parse_titrations_arguments()
     config_dict = config.to_dict()
@@ -396,29 +401,21 @@ if __name__ == "__main__":
         )
         t_gather_start = time.perf_counter()
     # insead of gathering all results at once, dump each process's results in a separate file and then load and combine them in the root process to avoid memory issues
-    axon_results_path = os.path.join(results_dir_sim, f"axon_results_rank_{rank}.npy")
-    save_results(axons_results, axon_results_path)
-    # axon_results_gathered = comm.gather(axons_results, root=0)
-    # make sure all processes have finished writing their results before the root process tries to read them
-    comm.Barrier()
+    axons_results_dict = {k: v for axon_res in axons_results for k, v in axon_res.items()}
+    # combine results across ranks via node-local in-memory gather + throttled per-node HDF5 dumps,
+    # instead of every rank dumping/reloading its own file (avoids overwhelming the shared filesystem)
+    axon_results_all = merge_distributed_results(
+        axons_results_dict,
+        comm,
+        node_comm,
+        local_rank,
+        rank,
+        results_dir_sim,
+        tag="titration",
+        mpi_module=MPI,
+        broadcast_to_all=False,  # only rank 0 needs it, for the final combined dump
+    )
     if rank == 0:
-        # now load all results and combine them into one dictionary (print a warning if some files are missing)
-        for r in range(size):
-            if not os.path.isfile(os.path.join(results_dir_sim, f"axon_results_rank_{r}.npy")):
-                print(f"Warning: Missing results file for rank {r} at {os.path.join(results_dir_sim, f'axon_results_rank_{r}.npy')}")
-        axon_results_gathered = []
-        for r in range(size):
-            axon_results_path_r = os.path.join(results_dir_sim, f"axon_results_rank_{r}.npy")
-            if os.path.isfile(axon_results_path_r):
-                axon_results_gathered.append(np.load(axon_results_path_r, allow_pickle=True))
-            else:
-                print(f"Warning: Skipping missing results file for rank {r} at {axon_results_path_r}")
-        axon_results_all = {
-            k: v
-            for sublist in axon_results_gathered
-            for axon_res in sublist
-            for k, v in axon_res.items()
-        }
         t_gather_end = time.perf_counter()
         print(
             f"\t\tGathered all results in {t_gather_end - t_gather_start} seconds!",
@@ -440,11 +437,6 @@ if __name__ == "__main__":
 
         output_npy_path = os.path.join(results_dir_sim, "axons_titration_results.npy")
         save_results(axon_results_all, output_npy_path)
-        # now loop over the individual process results files and delete them to save space
-        for r in range(size):
-            axon_results_path_r = os.path.join(results_dir_sim, f"axon_results_rank_{r}.npy")
-            if os.path.isfile(axon_results_path_r):
-                os.remove(axon_results_path_r)
         print("----------------------------------------------------", flush=True)
     else:
         pass

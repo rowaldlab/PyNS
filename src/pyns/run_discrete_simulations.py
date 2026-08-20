@@ -35,16 +35,23 @@ from .utils import (
     axon_dicts_to_afferent_efferent_groups,
     axon_names_to_traj_groups,
     save_results,
+    merge_distributed_results,
     DummyComm,
 )
 from .sim_utils import simulate_axons, discretize_and_interpolate_v
 import matplotlib.pyplot as plt
 from .arguments_parsers import parse_discrete_simulations_arguments
+from multiprocessing.shared_memory import SharedMemory
+from multiprocessing import resource_tracker
 
 if __name__ == "__main__":
     comm = MPI.COMM_WORLD if MPI else DummyComm()
     rank = comm.Get_rank()
     size = comm.Get_size()
+
+    global_rank = comm.Get_rank()
+    node_comm = comm.Split_type(MPI.COMM_TYPE_SHARED)
+    local_rank = node_comm.Get_rank()
 
     config = parse_discrete_simulations_arguments()
     config_dict = config.to_dict()
@@ -187,23 +194,110 @@ if __name__ == "__main__":
     # handle field_path as a list of paths (for multiple field files) or a single path (for one field file)
     field_dicts = []
     field_paths = config.field_path if isinstance(config.field_path, list) else [config.field_path]
-    for field_path in field_paths:
-        if field_path.endswith(".npy") and os.path.isfile(field_path):
-            field_dict = np.load(field_path, allow_pickle=True)[()]
-        elif field_path.endswith(".h5") and os.path.isfile(field_path):
-            with h5py.File(field_path, "r") as f:
-                field_dict = {key: f[key][()] for key in f.keys()}
-        else:
-            if rank == 0:
-                if not os.path.isfile(field_path):
-                    error_msg = f"field_path {field_path} does not exist!"
-                else:
-                    error_msg = f"field_path {field_path} must be a .npy or .h5 file!"
-                raise ValueError(error_msg)
-            sys.exit()
-        field_dict["x"] *= 1e6  # m to um
-        field_dict["y"] *= 1e6  # m to um
-        field_dict["z"] *= 1e6  # m to um
+    # IMPORTANT: Keep references to the SharedMemory objects!
+    # If they are garbage collected, Python will close the memory connection.
+    shm_blocks = []
+    for file_idx, field_path in enumerate(field_paths):
+        metadata = None
+        status = "OK"
+
+        # ---------------------------------------------------------
+        # 1. Metadata Inspection (Preserving Layout & Key Order)
+        # ---------------------------------------------------------
+        if local_rank == 0:
+            if not os.path.isfile(field_path):
+                status = f"ERROR: field_path {field_path} does not exist!"
+            elif not (field_path.endswith(".npy") or field_path.endswith(".h5")):
+                status = f"ERROR: field_path {field_path} must be a .npy or .h5 file!"
+            else:
+                metadata = {}
+                if field_path.endswith(".npy"):
+                    temp_dict = np.load(field_path, allow_pickle=True)[()]
+                    for key, arr in temp_dict.items():
+                        arr = np.asarray(arr)
+                        # Check if array is Fortran contiguous ('F') or C contiguous ('C')
+                        order = 'F' if arr.flags.f_contiguous and not arr.flags.c_contiguous else 'C'
+
+                        metadata[key] = {
+                            "shape": arr.shape,
+                            "dtype": arr.dtype.str,
+                            "order": order,
+                            "n_bytes": arr.nbytes,
+                            "shm_name": f"shm_node_{global_rank}_f{file_idx}_{key}"
+                        }
+                elif field_path.endswith(".h5"):
+                    with h5py.File(field_path, "r") as f:
+                        for key in f.keys():
+                            dset = f[key]
+                            # HDF5 datasets load as C-contiguous by default unless specified
+                            metadata[key] = {
+                                "shape": dset.shape,
+                                "dtype": dset.dtype.str,
+                                "order": 'C',
+                                "n_bytes": int(np.prod(dset.shape) * dset.dtype.itemsize),
+                                "shm_name": f"shm_node_{global_rank}_f{file_idx}_{key}"
+                            }
+
+        status = node_comm.bcast(status, root=0)
+        if status != "OK":
+            if global_rank == 0:
+                print(status)
+            sys.exit(1)
+
+        metadata = node_comm.bcast(metadata, root=0)
+
+        # ---------------------------------------------------------
+        # 2. Allocate and Load Data (Preserving Layout)
+        # ---------------------------------------------------------
+        field_dict = {}
+
+        if local_rank == 0:
+            if field_path.endswith(".npy"):
+                for key, meta in metadata.items():
+                    shm = SharedMemory(create=True, size=meta["n_bytes"], name=meta["shm_name"])
+                    shm_blocks.append(shm)
+
+                    # Pass order=meta["order"] to preserve 'C' or 'F' memory layout
+                    arr = np.ndarray(meta["shape"], dtype=np.dtype(meta["dtype"]), buffer=shm.buf, order=meta["order"])
+                    np.copyto(arr, np.asarray(temp_dict[key]))
+                    field_dict[key] = arr
+                del temp_dict
+
+            elif field_path.endswith(".h5"):
+                with h5py.File(field_path, "r") as f:
+                    for key, meta in metadata.items():
+                        shm = SharedMemory(create=True, size=meta["n_bytes"], name=meta["shm_name"])
+                        shm_blocks.append(shm)
+
+                        arr = np.ndarray(meta["shape"], dtype=np.dtype(meta["dtype"]), buffer=shm.buf, order=meta["order"])
+                        # read directly from h5 dataset into shared memory array
+                        f[key].read_direct(arr)
+                        field_dict[key] = arr
+
+            # convert x, y, z from meters to micrometers
+            field_dict["x"] *= 1e6  # m to um
+            field_dict["y"] *= 1e6  # m to um
+            field_dict["z"] *= 1e6  # m to um
+
+        # ---------------------------------------------------------
+        # 3. Synchronize and Attach (Workers)
+        # ---------------------------------------------------------
+        node_comm.Barrier()
+
+        if local_rank != 0:
+            for key, meta in metadata.items():
+                shm = SharedMemory(name=meta["shm_name"])
+                shm_blocks.append(shm)
+                # only the leader (creator) is responsible for unlinking; stop this worker's own
+                # resource_tracker from also trying to unlink it later (avoids noisy exit warnings)
+                resource_tracker.unregister(shm._name, "shared_memory")
+
+                # Workers attach using the EXACT same memory layout order
+                arr = np.ndarray(meta["shape"], dtype=np.dtype(meta["dtype"]), buffer=shm.buf, order=meta["order"])
+                field_dict[key] = arr
+        # field_dict["x"] *= 1e6  # m to um
+        # field_dict["y"] *= 1e6  # m to um
+        # field_dict["z"] *= 1e6  # m to um
         field_dicts.append(field_dict)
 
     if rank == 0:
@@ -430,6 +524,15 @@ if __name__ == "__main__":
         print(f"\tDiscretization and interpolation took {t_discr_end - t_discr_start} seconds!", flush=True)
 
     field_dicts = None
+    # Clean up shared memory blocks after all processes are done using them
+    node_comm.Barrier()
+    for shm in shm_blocks:
+        shm.close()
+        if local_rank == 0:
+            try:
+                shm.unlink()  # Only the leader unlinks to avoid race conditions
+            except FileNotFoundError:
+                pass  # Already unlinked by another process
 
     axon_results_all = {}
     # first simulate afferent axons
@@ -461,29 +564,20 @@ if __name__ == "__main__":
         t2 = time.perf_counter()
         if rank == 0:
             print(f"\tRANK 0: Finished simulating afferent axons in {t2-t1} seconds!", flush=True)
-            # gather results
         comm.Barrier()
-        # dump results of each process to a file to avoid memory issues when gathering large results
-        temp_process_results_path = os.path.join(results_dir_sim, f"axon_results_rank_{rank}.npy")
-        save_results(afferent_results, temp_process_results_path)
-        # afferent_results_gathered = comm.gather(afferent_results, root=0)
-        if rank == 0:
-            # print(f"\tGathered results from all processors!", flush=True)
-            print(f"\tSaved results of each processor to file to avoid memory issues when gathering large results!", flush=True)
-        comm.Barrier()
-        # now load results from all processors and gather in a list
-        afferent_results_gathered = []
-        for r in range(size):
-            temp_process_results_path = os.path.join(results_dir_sim, f"axon_results_rank_{r}.npy")
-            if os.path.isfile(temp_process_results_path):
-                process_results = np.load(temp_process_results_path, allow_pickle=True)[()]
-                afferent_results_gathered.append(process_results)
-            else:
-                print(f"\tWarning: Results file for rank {r} not found at {temp_process_results_path}!", flush=True)
-                afferent_results_gathered.append({})
-        afferent_results_all = {
-            ax_name: ax_sim_res for ax_sims_res in afferent_results_gathered for ax_name, ax_sim_res in ax_sims_res.items()
-        }
+        # combine results across ranks via node-local in-memory gather + throttled per-node HDF5 dumps,
+        # instead of every rank dumping/reloading its own file (avoids overwhelming the shared filesystem)
+        afferent_results_all = merge_distributed_results(
+            afferent_results,
+            comm,
+            node_comm,
+            local_rank,
+            rank,
+            results_dir_sim,
+            tag="afferent",
+            mpi_module=MPI,
+            broadcast_to_all=True,  # needed by all ranks for synaptic transmission in the efferent stage
+        )
         axon_results_all.update(afferent_results_all)
         if rank == 0:
             print(f"\tGathered results from all processors!", flush=True)
@@ -502,13 +596,6 @@ if __name__ == "__main__":
                 print("----------------------------------------------------", flush=True)
             sys.exit()
 
-        comm.Barrier()
-        # now remove temporary files
-        if rank == 0:
-            for r in range(size):
-                temp_process_results_path = os.path.join(results_dir_sim, f"axon_results_rank_{r}.npy")
-                if os.path.isfile(temp_process_results_path):
-                    os.remove(temp_process_results_path)
         comm.Barrier()
         if rank == 0:
             print(f"\tBroadcasted results to all processors!", flush=True)
@@ -565,29 +652,20 @@ if __name__ == "__main__":
         t2 = time.perf_counter()
         if rank == 0:
             print(f"\tRANK 0: Finished simulating efferent axons in {t2-t1} seconds!", flush=True)
-        # write results of each process to a file to avoid memory issues when gathering large results
-        temp_process_results_path = os.path.join(results_dir_sim, f"eff_axon_results_rank_{rank}.npy")
-        save_results(efferent_results, temp_process_results_path)
-        comm.Barrier()
+        # combine results across ranks via node-local in-memory gather + throttled per-node HDF5 dumps
+        efferent_results_all = merge_distributed_results(
+            efferent_results,
+            comm,
+            node_comm,
+            local_rank,
+            rank,
+            results_dir_sim,
+            tag="efferent",
+            mpi_module=MPI,
+            broadcast_to_all=False,  # only rank 0 needs it, for the final combined dump
+        )
         if rank == 0:
             print(f"\tGathered efferent results from all processors!", flush=True)
-            # now load results from all processors and gather in a list
-            efferent_results_gathered = []
-            for r in range(size):
-                temp_process_results_path = os.path.join(results_dir_sim, f"eff_axon_results_rank_{r}.npy")
-                if os.path.isfile(temp_process_results_path):
-                    process_results = np.load(temp_process_results_path, allow_pickle=True)[()]
-                    efferent_results_gathered.append(process_results)
-                    # now remove temporary file
-                    os.remove(temp_process_results_path)
-                else:
-                    print(f"\tWarning: Results file for rank {r} not found at {temp_process_results_path}!", flush=True)
-                    efferent_results_gathered.append({})
-        comm.Barrier()
-        if rank == 0:
-            efferent_results_all = {
-                ax_name: ax_sim_res for ax_sims_res in efferent_results_gathered for ax_name, ax_sim_res in ax_sims_res.items()
-            }
             axon_results_all.update(efferent_results_all)
 
         if config.efferents_only:
