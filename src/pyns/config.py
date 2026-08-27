@@ -63,6 +63,7 @@ class BaseConfig:
         self.cont_stim_waveform = False
         self.cont_stim_freq = 0.0
         self.cont_stim_carrier_freq = 0.0
+        self.capacitive_stim_type = None  # Options: "flat-top", "exp-droop"
         
         # Model parameters
         self.model_variant = "Alashqar"  # Options: "Alashqar", "Gaines", "MRG"

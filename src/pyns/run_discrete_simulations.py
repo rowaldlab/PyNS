@@ -30,6 +30,7 @@ import time
 import datetime
 from .utils import (
     create_cont_stim_waveform,
+    create_capacitive_stim_waveform,
     pulse_file_to_pulse,
     filter_axon_trajectories,
     axon_dicts_to_afferent_efferent_groups,
@@ -50,9 +51,14 @@ if __name__ == "__main__":
     rank = comm.Get_rank()
     size = comm.Get_size()
 
-    global_rank = comm.Get_rank()
-    node_comm = comm.Split_type(MPI.COMM_TYPE_SHARED)
-    local_rank = node_comm.Get_rank()
+    if MPI:
+        global_rank = comm.Get_rank()
+        node_comm = comm.Split_type(MPI.COMM_TYPE_SHARED)
+        local_rank = node_comm.Get_rank()
+    else:
+        global_rank = 0
+        node_comm = DummyComm()
+        local_rank = 0
 
     config = parse_discrete_simulations_arguments()
     config_dict = config.to_dict()
@@ -394,6 +400,7 @@ if __name__ == "__main__":
         pulse_silence_periods = config.pulse_silence_period if isinstance(config.pulse_silence_period, list) else [config.pulse_silence_period]
         cont_stim_freqs = config.cont_stim_freq if isinstance(config.cont_stim_freq, list) else [config.cont_stim_freq]
         cont_stim_carrier_freqs = config.cont_stim_carrier_freq if isinstance(config.cont_stim_carrier_freq, list) else [config.cont_stim_carrier_freq]
+        capacitive_stim_types = config.capacitive_stim_type if isinstance(config.capacitive_stim_type, list) else [config.capacitive_stim_type]
         # for any parameter if its length is 1, then repeat it to match the length of field_dicts, otherwise raise an error if the lengths are not equal
         max_len_waveform_params = max(len(pulse_shapes), len(pulse_amplitudes), len(pulse_widths), len(pulse_silence_periods), len(cont_stim_freqs), len(cont_stim_carrier_freqs))
         if max_len_waveform_params != len(field_dicts) and max_len_waveform_params != 1:
@@ -414,6 +421,8 @@ if __name__ == "__main__":
             cont_stim_freqs = cont_stim_freqs * len(field_dicts)
         if len(cont_stim_carrier_freqs) == 1:
             cont_stim_carrier_freqs = cont_stim_carrier_freqs * len(field_dicts)
+        if len(capacitive_stim_types) == 1:
+            capacitive_stim_types = capacitive_stim_types * len(field_dicts)
         for i in range(len(pulse_shapes)):
             if rank == 0:
                 print(f"\tCreating pulse waveform {i+1} of {len(pulse_shapes)}...", flush=True)
@@ -421,19 +430,56 @@ if __name__ == "__main__":
                 if rank == 0:
                     raise ValueError(f"Invalid pulse_shape argument: {pulse_shapes[i]}. Accepted arguments: 'biphasic', 'monophasic'")
                 sys.exit()
-            biphasic_flag = False
-            if pulse_shapes[i] == "biphasic":
-                biphasic_flag = True
-            stim_t, stim_pulse = create_cont_stim_waveform(
-                silence_period=pulse_silence_periods[i],
-                burst_freq=cont_stim_freqs[i],
-                burst_width=pulse_widths[i],
-                carrier_freq=cont_stim_carrier_freqs[i],
-                time_step=config.time_step,
-                total_stim_dur=sim_dur,
-                biphasic=biphasic_flag,
-                amplitude=pulse_amplitudes[i],
-            )
+            # first check if capacitive_stim_type is provided and valid
+            if capacitive_stim_types[i] is not None:
+                if capacitive_stim_types[i] not in ["flat-top", "exp-droop"]:
+                    if rank == 0:
+                        raise ValueError(f"Invalid capacitive_stim_type argument: {capacitive_stim_types[i]}. Accepted arguments: 'flat-top', 'exp-droop'")
+                    sys.exit()
+                # if capacitive_stim_type is "flat-top" is valid, we ignore pulse_shape and cont_stim_carrier_freq
+                elif capacitive_stim_types[i] == "flat-top":
+                    # for flat-top, set i_compliance to inf, tau to 0.636 (estimated from a manual, not accurate)
+                    # print a warning about tau and pulse width
+                    if rank == 0:
+                        print(f"\tUsing capacitive_stim_type 'flat-top' for pulse {i+1}. Ignoring pulse_shape and cont_stim_carrier_freq. Using tau=0.636 ms (estimated from a TENS manual sketch, not accurate!).", flush=True)
+                    stim_t, stim_pulse = create_capacitive_stim_waveform(
+                        silence_period=pulse_silence_periods[i],
+                        total_stim_dur=sim_dur,
+                        amplitude=pulse_amplitudes[i],
+                        time_step=config.time_step,
+                        frequency=cont_stim_freqs[i],
+                        pulse_width=pulse_widths[i],
+                        tau=0.636,                 # R_load * C_block [ms] -- sets droop AND tail
+                        i_compliance=np.inf,     # V_rail / R_load, same units as amplitude
+                    )
+                elif capacitive_stim_types[i] == "exp-droop":
+                    # for exp-droop, set i_compliance to amplitude, tau to 0.698 (measured from oscilloscope trace of a TENS device at PW=0.2 ms)
+                    if rank == 0:
+                        print(f"\tUsing capacitive_stim_type 'exp-droop' for pulse {i+1}. Ignoring pulse_shape and cont_stim_carrier_freq. Using tau=0.698 ms (measured from oscilloscope trace of a TENS device at PW=0.2 ms).", flush=True)
+                    stim_t, stim_pulse = create_capacitive_stim_waveform(
+                        silence_period=pulse_silence_periods[i],
+                        total_stim_dur=sim_dur,
+                        amplitude=pulse_amplitudes[i],
+                        time_step=config.time_step,
+                        frequency=cont_stim_freqs[i],
+                        pulse_width=pulse_widths[i],
+                        tau=0.698,                 # R_load * C_block [ms] -- sets droop AND tail
+                        i_compliance=pulse_amplitudes[i],     # V_rail / R_load, same units as amplitude
+                    )
+            else:
+                biphasic_flag = False
+                if pulse_shapes[i] == "biphasic":
+                    biphasic_flag = True
+                stim_t, stim_pulse = create_cont_stim_waveform(
+                    silence_period=pulse_silence_periods[i],
+                    burst_freq=cont_stim_freqs[i],
+                    burst_width=pulse_widths[i],
+                    carrier_freq=cont_stim_carrier_freqs[i],
+                    time_step=config.time_step,
+                    total_stim_dur=sim_dur,
+                    biphasic=biphasic_flag,
+                    amplitude=pulse_amplitudes[i],
+                )
             stim_pulses_t.append(stim_t)
             stim_pulses.append(stim_pulse)
             field_base_name = os.path.basename(field_paths[i])

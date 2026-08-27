@@ -56,6 +56,9 @@ cont_stim_waveform: false
 cont_stim_freq: 0.0
 cont_stim_carrier_freq: 0.0
 
+# Useful to simulate TENS charge-balanced waveforms
+capacitive_stim_type: null  # Options: "flat-top", "exp-droop"
+
 # Model parameters
 model_variant: "Alashqar"  # Options: "Alashqar", "Gaines", "MRG"
 paramfit_method: "continuous"

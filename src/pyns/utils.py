@@ -176,6 +176,55 @@ def pulse_file_to_pulse(pulse_path, stim_dur=5, time_step=0.025, start_at=0):
         pulse_y[start_index:end_index] = np.linspace(start_val, end_val, n_samples)
     return pulse_x, pulse_y
 
+def create_capacitive_stim_waveform(
+        silence_period=1,
+        total_stim_dur=5,
+        amplitude=1.0,
+        time_step=0.005,
+        frequency=0.0,
+        pulse_width=1.0,
+        tau=0.5,                 # R_load * C_block [ms] -- sets droop AND tail
+        i_compliance=np.inf,     # V_rail / R_load, same units as amplitude
+):
+    """Create a capacitive stimulation pulse train with given parameters.
+
+    One RC governs everything, so there is no independent droop rate.
+
+    i_compliance = inf        -> regulated throughout, flat top (mid-cost long-pulse TENS)
+    i_compliance <= amplitude -> never regulates, exponential droop from t=0
+                                 (low-cost short-pulse TENS: pass i_compliance=amplitude)
+    in between                -> flat until the cap eats the headroom, then
+                                 droops (a current source that clips mid-pulse)
+    """
+    period = 1000.0 / frequency if frequency > 0 else total_stim_dur
+
+    n_period_steps = int(period / time_step)
+    single_pulse = np.zeros((n_period_steps))
+
+    # active phase: flat while regulating, exponential once compliance is gone
+    n_pulse_steps = min(int(pulse_width / time_step), n_period_steps)
+    t_active = np.arange(n_pulse_steps) * time_step
+    peak = min(amplitude, i_compliance)
+    t_knee = tau * (i_compliance / peak - 1.0) if peak > 0 else np.inf
+    active_seg = peak * np.exp(-np.maximum(0.0, t_active - t_knee) / tau)
+    single_pulse[:n_pulse_steps] = active_seg
+
+    # recovery tail: peak set by charge conservation, NOT by amplitude
+    if n_pulse_steps < n_period_steps:
+        q_pulse = active_seg.sum() * time_step
+        t_tail = np.arange(n_period_steps - n_pulse_steps) * time_step
+        single_pulse[n_pulse_steps:] = -(q_pulse / tau) * np.exp(-t_tail / tau)
+
+    active_dur = total_stim_dur - silence_period
+    n_repeats = int(np.ceil(active_dur / period)) if period > 0 else 1
+    repeated_pulse = np.tile(single_pulse, n_repeats)
+    repeated_pulse = repeated_pulse[:int(active_dur / time_step)]
+    silence_vector = np.zeros((int(silence_period / time_step)))
+    pulse = np.concatenate((silence_vector, repeated_pulse))
+    pulse = pulse[:int(total_stim_dur / time_step)]
+    time_vector = np.arange(0, total_stim_dur, time_step)
+
+    return time_vector, pulse
 
 def create_cont_stim_waveform(
     silence_period=1,
