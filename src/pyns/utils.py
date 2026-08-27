@@ -460,7 +460,25 @@ def load_results_hdf5(filepath, group_name=None):
         return _hdf5_group_to_dict(target)
 
 
-def merge_distributed_results(local_results, comm, node_comm, local_rank, global_rank, results_dir_sim, tag, mpi_module=None, broadcast_to_all=False):
+def prune_afferent_results_for_synaptic_transmission(afferent_results_all):
+    """Strip afferent results down to only what synaptic transmission needs (segment_midpoints
+    and, per stim amplitude, AP_init_sites), instead of the full per-axon results (AP_times,
+    recorded membrane potentials, etc.). Used to shrink the copy broadcast to every rank, since
+    that full dict would otherwise be replicated in every single MPI process's memory.
+    """
+    return {
+        axon_name: {
+            "segment_midpoints": axon_res["segment_midpoints"],
+            "results": {
+                stim_key: {"AP_init_sites": stim_res["AP_init_sites"]}
+                for stim_key, stim_res in axon_res["results"].items()
+            },
+        }
+        for axon_name, axon_res in afferent_results_all.items()
+    }
+
+
+def merge_distributed_results(local_results, comm, node_comm, local_rank, global_rank, results_dir_sim, tag, mpi_module=None, broadcast_to_all=False, prune_fn=None):
     """Combine each rank's results dict while minimizing shared filesystem traffic.
 
     Instead of every rank dumping/reloading one temp file each (O(size), or O(size^2) when every
@@ -473,6 +491,9 @@ def merge_distributed_results(local_results, comm, node_comm, local_rank, global
     Only rank 0 reads the (few) per-node files back and merges them; the merged dict is broadcast
     to all ranks only if `broadcast_to_all` is True. The temp files are removed afterward.
     `mpi_module` should be the imported `mpi4py.MPI` module (or None when MPI is unavailable).
+    `prune_fn`, if provided, is applied (on rank 0 only) to shrink the dict actually sent over the
+    broadcast, so every rank isn't forced to hold a full-size copy in memory; rank 0 still returns
+    the unpruned `merged_results` for its own use (e.g. saving to disk).
     """
     node_results_list = node_comm.gather(local_results, root=0)
     node_results = {}
@@ -509,7 +530,11 @@ def merge_distributed_results(local_results, comm, node_comm, local_rank, global
             if fname.startswith(f"results_{tag}_node") and fname.endswith(".h5"):
                 merged_results.update(load_results_hdf5(os.path.join(shared_tmp_dir, fname)))
     if broadcast_to_all:
-        merged_results = comm.bcast(merged_results, root=0)
+        # only rank 0 needs the pruned dict computed; other ranks pass None and receive it via bcast
+        to_broadcast = prune_fn(merged_results) if (prune_fn is not None and global_rank == 0) else merged_results
+        received = comm.bcast(to_broadcast, root=0)
+        if global_rank != 0:
+            merged_results = received
 
     comm.Barrier()
     if global_rank == 0:

@@ -36,6 +36,7 @@ from .utils import (
     axon_names_to_traj_groups,
     save_results,
     merge_distributed_results,
+    prune_afferent_results_for_synaptic_transmission,
     DummyComm,
 )
 from .sim_utils import simulate_axons, discretize_and_interpolate_v
@@ -120,7 +121,13 @@ if __name__ == "__main__":
         else:
             afferent_results_all = None
 
-        afferent_results_all = comm.bcast(afferent_results_all, root=0)
+        # only rank 0 needs the full loaded dict (kept for the final combined dump); every other rank
+        # only needs segment_midpoints + AP_init_sites for synaptic transmission, so send them a
+        # pruned copy instead of replicating the full results dict on every single process
+        to_broadcast = prune_afferent_results_for_synaptic_transmission(afferent_results_all) if (rank == 0 and afferent_results_all is not None) else None
+        received = comm.bcast(to_broadcast, root=0)
+        if rank != 0:
+            afferent_results_all = received
         if afferent_results_all is None and rank == 0:
             print(f"\t!!! [WARNING] No matching afferent results found in {afferents_results_path} !!!", flush=True)
         elif rank == 0:
@@ -376,7 +383,7 @@ if __name__ == "__main__":
                 if rank == 0:
                     raise ValueError(f"pulse_path {pulse_path} does not exist!")
                 sys.exit()
-            stim_t, stim_pulse = pulse_file_to_pulse(pulse_path, stim_dur=config.sim_dur, time_step=config.time_step)
+            stim_t, stim_pulse = pulse_file_to_pulse(pulse_path, stim_dur=sim_dur, time_step=config.time_step)
             stim_pulses_t.append(stim_t)
             stim_pulses.append(stim_pulse)
     else:
@@ -423,7 +430,7 @@ if __name__ == "__main__":
                 burst_width=pulse_widths[i],
                 carrier_freq=cont_stim_carrier_freqs[i],
                 time_step=config.time_step,
-                total_stim_dur=config.sim_dur,
+                total_stim_dur=sim_dur,
                 biphasic=biphasic_flag,
                 amplitude=pulse_amplitudes[i],
             )
@@ -576,10 +583,17 @@ if __name__ == "__main__":
             results_dir_sim,
             tag="afferent",
             mpi_module=MPI,
-            broadcast_to_all=True,  # needed by all ranks for synaptic transmission in the efferent stage
+            # only needed by other ranks for synaptic transmission in the efferent stage; skip the
+            # broadcast entirely otherwise instead of replicating unused data on every rank
+            broadcast_to_all=config.enable_synaptic_transmission,
+            # only rank 0 needs the full per-axon results (for the final combined dump); every other
+            # rank only needs segment_midpoints + AP_init_sites, so send them a pruned copy instead of
+            # replicating the full (potentially huge) afferent results dict on every single process
+            prune_fn=prune_afferent_results_for_synaptic_transmission if config.enable_synaptic_transmission else None,
         )
-        axon_results_all.update(afferent_results_all)
+        # only rank 0 saves axon_results_all, so avoid needlessly keeping a full duplicate on every rank
         if rank == 0:
+            axon_results_all.update(afferent_results_all)
             print(f"\tGathered results from all processors!", flush=True)
 
         # if afferents_only is True, save results and exit
@@ -619,7 +633,9 @@ if __name__ == "__main__":
     if len(efferent_axons) > 0 and not any([config.afferents_only, config.other_axons_only]):
         t1 = time.perf_counter()
         if config.enable_synaptic_transmission:
-            projecting_axons_results = copy.deepcopy(afferent_results_all)
+            # afferent_results_all is read-only here (only indexed/iterated, never mutated), so no
+            # need to deepcopy it; on non-zero ranks it's already the pruned, lightweight version
+            projecting_axons_results = afferent_results_all
         else:
             projecting_axons_results = None
         efferent_results = simulate_axons(
