@@ -4,10 +4,10 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pyns"
-version = "0.1.0"
+version = "0.1.2"
 description = "Python Neuron Simulations - A framework for peripheral nerve simulations"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.10,<3.13"  # neuron==8.2.4 only ships wheels up to CPython 3.12
 license = {text = "MIT"}
 authors = [
     {name = "Abdallah Alashqar", email = "abdallah.j.alashqar@fau.de"}
@@ -23,7 +23,9 @@ dependencies = [
     "scipy>=1.15.0",
     "h5py>=3.14.0",
     "pyvista==0.44.1",
+    "vtk<9.5",  # pyvista 0.44.1 fails to import with vtk>=9.5 (vtkCapsuleSource removed)
     "neuron==8.2.4",
+    "setuptools<82",  # NEURON 8.2.4's nrnivmodl imports pkg_resources, removed in setuptools 82
     "pyyaml==6.0.2",
 ]
 
